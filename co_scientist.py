@@ -598,7 +598,7 @@ class GenerationAgent:
             try:
                 # 1. Generate Drafts
                 print("   ✍️ Generating Drafts...")
-                draft_hypotheses = await self._generate_with_llm(goal, context_papers, count, rag_context, mode="draft")
+                draft_hypotheses = await self._generate_with_llm(goal, context_papers, count, rag_context)
                 
                 if not draft_hypotheses:
                     self.last_error = "LLM returned empty draft list"
