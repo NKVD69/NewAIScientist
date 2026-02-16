@@ -152,7 +152,7 @@ with st.sidebar:
             pass  # Not initialized yet
     
     st.divider()
-    st.info("AI Co-Scientist v1.3\nBased on Google DeepMind Research")
+    # st.info("AI Co-Scientist v1.3\nBased on Google DeepMind Research")
 
 # --- CONFIGURATION & SESSION STATE ---
 # Initialize session state for widgets if not present to avoid value/key conflicts

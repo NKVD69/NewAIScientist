@@ -37,6 +37,13 @@ try:
 except ImportError:
     tiktoken = None
 
+# PubMed Tools
+try:
+    from Bio import Entrez
+    Entrez.email = os.environ.get("ENTREZ_EMAIL", "ai-scientist@example.com")
+except ImportError:
+    Entrez = None
+
 
 @dataclass
 class DocumentChunk:
@@ -88,13 +95,72 @@ class PDFDownloader:
             print(f"⚠ Failed to download ArXiv PDF: {e}")
             return None
     
+    async def _get_pmcid_from_pmid(self, pmid: str) -> Optional[str]:
+        """Convert PMID to PMCID using Entrez API"""
+        if not Entrez:
+            return None
+            
+        try:
+            def call_entrez():
+                handle = Entrez.elink(dbfrom="pubmed", db="pmc", linkname="pubmed_pmc", id=pmid)
+                record = Entrez.read(handle)
+                handle.close()
+                if record and record[0]["LinkSetDb"]:
+                    # Extract PMCID (e.g., "3040823")
+                    return record[0]["LinkSetDb"][0]["Link"][0]["Id"]
+                return None
+            
+            pmcid = await asyncio.to_thread(call_entrez)
+            return pmcid
+        except Exception as e:
+            print(f"⚠ Failed to convert PMID {pmid} to PMCID: {e}")
+            return None
+
     async def download_pubmed_pdf(self, paper_url: str) -> Optional[Path]:
         """Download PDF from PubMed (via PMC when available)"""
-        # Note: PubMed doesn't always have full-text PDFs
-        # This would require PMC API integration or publisher links
-        # For now, we return None and rely on abstracts
-        print(f"ℹ PubMed PDF download not yet implemented (URL: {paper_url})")
-        return None
+        # Extract PMID from URL
+        # Format: https://pubmed.ncbi.nlm.nih.gov/38218645/
+        pmid_match = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", paper_url)
+        if not pmid_match:
+            print(f"ℹ Could not extract PMID from {paper_url}")
+            return None
+            
+        pmid = pmid_match.group(1)
+        
+        # Get PMCID
+        pmcid = await self._get_pmcid_from_pmid(pmid)
+        if not pmcid:
+            print(f"ℹ No PMCID found for PMID {pmid} (Paper may not be Open Access)")
+            return None
+            
+        # Construct PMC PDF URL
+        # URL format: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC<ID>/pdf/
+        # Note: API returns ID without PMC prefix usually, but let's check.
+        # Entrez returns standard ID (digits).
+        
+        pdf_url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmcid}/pdf/"
+        
+        try:
+           cache_path = self._get_cache_path(pdf_url)
+           
+           if cache_path.exists():
+               return cache_path
+               
+           # Download with User-Agent
+           def download():
+               req = urllib.request.Request(
+                   pdf_url, 
+                   headers={'User-Agent': 'AI-CoScientist/1.0 (mailto:ai-scientist@example.com)'}
+               )
+               with urllib.request.urlopen(req) as response, open(cache_path, 'wb') as out_file:
+                   out_file.write(response.read())
+                   
+           await asyncio.to_thread(download)
+           return cache_path
+           
+        except Exception as e:
+            print(f"⚠ Failed to download PMC PDF for {pmid}: {e}")
+            return None
     
     async def download_paper(self, paper: Dict) -> Optional[Path]:
         """Download paper PDF based on source"""
