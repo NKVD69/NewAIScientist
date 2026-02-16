@@ -1,0 +1,303 @@
+{
+  "research_goal": {
+    "id": "7989549d",
+    "title": "Gene Transfer Mechanisms in CRISPR-Based Horizontal Gene Transfer",
+    "description": "Explain the mechanisms by which CRISPR-Cas systems facilitate horizontal gene transfer (HGT) between distantly related bacterial species. Focus on understanding how phage-inducible chromosomal islands (PICIs) exploit CRISPR machinery. Integrate molecular, evolutionary, and ecological perspectives.",
+    "domain": "Microbiology/Molecular Evolution",
+    "preferences": {
+      "focus_on_mechanistic_understanding": true,
+      "require_evolutionary_perspective": true,
+      "emphasize_system_level": true,
+      "consider_ecological_context": true
+    },
+    "constraints": [
+      "Must integrate molecular and evolutionary mechanisms",
+      "Should explain inter-species transfer",
+      "Consider selective pressures and ecosystem effects",
+      "Validate against experimental observations"
+    ],
+    "creation_timestamp": "2026-01-27T10:39:41.520112"
+  },
+  "hypotheses": [
+    {
+      "id": "0605abf4",
+      "title": "Hypothesis 1 (Literature-based): Microbiology/Molecular Evolution Mechanism",
+      "description": "Generated from synthesizing literature on Microbiology/Molecular Evolution. This hypothesis proposes a novel mechanism integrating existing research.",
+      "mechanism": "Building on current understanding of Microbiology/Molecular Evolution, this mechanism suggests that the key pathway involves cross-disciplinary integration of molecular and systems-level effects.",
+      "elo_rating": 1213.8278203282016,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Prediction 1: Observable effect in Microbiology/Molecular Evolution context",
+        "Prediction 2: Measurable downstream consequence",
+        "Prediction 3: Quantifiable parameter change"
+      ],
+      "grounding_evidence": [
+        "Wang et al. (2023) - Supporting pathway analysis",
+        "Smith & Jones (2024) - Relevant molecular mechanism",
+        "Recent meta-analysis - Contextual evidence"
+      ],
+      "generation_method": "simulated-literature",
+      "num_reviews": 1
+    },
+    {
+      "id": "06997dac",
+      "title": "Hypothesis 2 (Assumption-based): Novel Target in Microbiology/Molecular Evolution",
+      "description": "Generated through systematic assumption identification in Microbiology/Molecular Evolution.",
+      "mechanism": "Logical chain: If assumption X holds \u2192 intermediate effect Y \u2192 final outcome Z",
+      "elo_rating": 1201.474074742143,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Test 1: Validate foundational assumption",
+        "Test 2: Measure intermediate effect",
+        "Test 3: Confirm end-state outcome"
+      ],
+      "grounding_evidence": [
+        "Logical deduction from established principles",
+        "Cross-domain analytical framework"
+      ],
+      "generation_method": "simulated-assumption",
+      "num_reviews": 1
+    },
+    {
+      "id": "8ccb97d9",
+      "title": "Hypothesis 3 (Analogy-based): Cross-domain Mechanism for Microbiology/Molecular Evolution",
+      "description": "Analogous to mechanisms in related domains, proposing novel application to Microbiology/Molecular Evolution",
+      "mechanism": "The mechanism discovered in Domain A may apply to Domain B through structural similarity",
+      "elo_rating": 1181.8922720132489,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Analogy prediction 1: Domain-specific manifestation",
+        "Analogy prediction 2: Testable correspondence"
+      ],
+      "grounding_evidence": [],
+      "generation_method": "simulated-analogy",
+      "num_reviews": 1
+    },
+    {
+      "id": "814f9fea",
+      "title": "Hypothesis 4 (Unconventional): Divergent Mechanism in Microbiology/Molecular Evolution",
+      "description": "Explores unconventional directions in Microbiology/Molecular Evolution research",
+      "mechanism": "Moving away from established paradigms to explore underexplored mechanistic space",
+      "elo_rating": 1201.4695015289756,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "High-risk high-reward prediction 1",
+        "Divergent experimental approach"
+      ],
+      "grounding_evidence": [],
+      "generation_method": "simulated-unconventional",
+      "num_reviews": 1
+    },
+    {
+      "id": "cc3e7d71",
+      "title": "Hypothesis 5 (Literature-based): Microbiology/Molecular Evolution Mechanism",
+      "description": "Generated from synthesizing literature on Microbiology/Molecular Evolution. This hypothesis proposes a novel mechanism integrating existing research.",
+      "mechanism": "Building on current understanding of Microbiology/Molecular Evolution, this mechanism suggests that the key pathway involves cross-disciplinary integration of molecular and systems-level effects.",
+      "elo_rating": 1214.4996882305456,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Prediction 1: Observable effect in Microbiology/Molecular Evolution context",
+        "Prediction 2: Measurable downstream consequence",
+        "Prediction 3: Quantifiable parameter change"
+      ],
+      "grounding_evidence": [
+        "Wang et al. (2023) - Supporting pathway analysis",
+        "Smith & Jones (2024) - Relevant molecular mechanism",
+        "Recent meta-analysis - Contextual evidence"
+      ],
+      "generation_method": "simulated-literature",
+      "num_reviews": 1
+    },
+    {
+      "id": "cadaa211",
+      "title": "Hypothesis 6 (Assumption-based): Novel Target in Microbiology/Molecular Evolution",
+      "description": "Generated through systematic assumption identification in Microbiology/Molecular Evolution.",
+      "mechanism": "Logical chain: If assumption X holds \u2192 intermediate effect Y \u2192 final outcome Z",
+      "elo_rating": 1216.0,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Test 1: Validate foundational assumption",
+        "Test 2: Measure intermediate effect",
+        "Test 3: Confirm end-state outcome"
+      ],
+      "grounding_evidence": [
+        "Logical deduction from established principles",
+        "Cross-domain analytical framework"
+      ],
+      "generation_method": "simulated-assumption",
+      "num_reviews": 1
+    },
+    {
+      "id": "c71b9097",
+      "title": "Hypothesis 7 (Analogy-based): Cross-domain Mechanism for Microbiology/Molecular Evolution",
+      "description": "Analogous to mechanisms in related domains, proposing novel application to Microbiology/Molecular Evolution",
+      "mechanism": "The mechanism discovered in Domain A may apply to Domain B through structural similarity",
+      "elo_rating": 1134.7103508460223,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Analogy prediction 1: Domain-specific manifestation",
+        "Analogy prediction 2: Testable correspondence"
+      ],
+      "grounding_evidence": [],
+      "generation_method": "simulated-analogy",
+      "num_reviews": 1
+    },
+    {
+      "id": "76bbbf76",
+      "title": "Hypothesis 8 (Unconventional): Divergent Mechanism in Microbiology/Molecular Evolution",
+      "description": "Explores unconventional directions in Microbiology/Molecular Evolution research",
+      "mechanism": "Moving away from established paradigms to explore underexplored mechanistic space",
+      "elo_rating": 1183.263693206478,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "High-risk high-reward prediction 1",
+        "Divergent experimental approach"
+      ],
+      "grounding_evidence": [],
+      "generation_method": "simulated-unconventional",
+      "num_reviews": 1
+    },
+    {
+      "id": "5f2a57a1",
+      "title": "Hypothesis 9 (Literature-based): Microbiology/Molecular Evolution Mechanism",
+      "description": "Generated from synthesizing literature on Microbiology/Molecular Evolution. This hypothesis proposes a novel mechanism integrating existing research.",
+      "mechanism": "Building on current understanding of Microbiology/Molecular Evolution, this mechanism suggests that the key pathway involves cross-disciplinary integration of molecular and systems-level effects.",
+      "elo_rating": 1256.604666321659,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Prediction 1: Observable effect in Microbiology/Molecular Evolution context",
+        "Prediction 2: Measurable downstream consequence",
+        "Prediction 3: Quantifiable parameter change"
+      ],
+      "grounding_evidence": [
+        "Wang et al. (2023) - Supporting pathway analysis",
+        "Smith & Jones (2024) - Relevant molecular mechanism",
+        "Recent meta-analysis - Contextual evidence"
+      ],
+      "generation_method": "simulated-literature",
+      "num_reviews": 1
+    },
+    {
+      "id": "aa91f41c",
+      "title": "Hypothesis 10 (Assumption-based): Novel Target in Microbiology/Molecular Evolution",
+      "description": "Generated through systematic assumption identification in Microbiology/Molecular Evolution.",
+      "mechanism": "Logical chain: If assumption X holds \u2192 intermediate effect Y \u2192 final outcome Z",
+      "elo_rating": 1213.5026470401192,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Test 1: Validate foundational assumption",
+        "Test 2: Measure intermediate effect",
+        "Test 3: Confirm end-state outcome"
+      ],
+      "grounding_evidence": [
+        "Logical deduction from established principles",
+        "Cross-domain analytical framework"
+      ],
+      "generation_method": "simulated-assumption",
+      "num_reviews": 1
+    },
+    {
+      "id": "7bc2ea4e",
+      "title": "Hypothesis 11 (Analogy-based): Cross-domain Mechanism for Microbiology/Molecular Evolution",
+      "description": "Analogous to mechanisms in related domains, proposing novel application to Microbiology/Molecular Evolution",
+      "mechanism": "The mechanism discovered in Domain A may apply to Domain B through structural similarity",
+      "elo_rating": 1185.334773748853,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Analogy prediction 1: Domain-specific manifestation",
+        "Analogy prediction 2: Testable correspondence"
+      ],
+      "grounding_evidence": [],
+      "generation_method": "simulated-analogy",
+      "num_reviews": 1
+    },
+    {
+      "id": "6f5ebf37",
+      "title": "Hypothesis 12 (Unconventional): Divergent Mechanism in Microbiology/Molecular Evolution",
+      "description": "Explores unconventional directions in Microbiology/Molecular Evolution research",
+      "mechanism": "Moving away from established paradigms to explore underexplored mechanistic space",
+      "elo_rating": 1197.420511993754,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "High-risk high-reward prediction 1",
+        "Divergent experimental approach"
+      ],
+      "grounding_evidence": [],
+      "generation_method": "simulated-unconventional",
+      "num_reviews": 1
+    },
+    {
+      "id": "08df79ab",
+      "title": "Hypothesis 9 (Literature-based): Microbiology/Molecular Evolution Mechanism (Evolved: enhancement)",
+      "description": "Generated from synthesizing literature on Microbiology/Molecular Evolution. This hypothesis proposes a novel mechanism integrating existing research.",
+      "mechanism": "Enhanced mechanism: Building on current understanding of Microbiology/Molecular Evolution, this mechanism suggests that the key pathway involves cross-disciplinary integration of molecular and systems-level effects. Additionally grounded by identifying supporting molecular pathways and experimental evidence from recent literature.",
+      "elo_rating": 1200.0,
+      "novelty_level": "unknown",
+      "status": "generated",
+      "testable_predictions": [
+        "Prediction 1: Observable effect in Microbiology/Molecular Evolution context",
+        "Prediction 2: Measurable downstream consequence",
+        "Prediction 3: Quantifiable parameter change",
+        "Advanced prediction: Multi-dimensional experimental validation"
+      ],
+      "grounding_evidence": [
+        "Wang et al. (2023) - Supporting pathway analysis",
+        "Smith & Jones (2024) - Relevant molecular mechanism",
+        "Recent meta-analysis - Contextual evidence",
+        "Additional pathway analysis",
+        "Cross-validation against recent meta-analyses"
+      ],
+      "generation_method": "evolved",
+      "num_reviews": 0
+    },
+    {
+      "id": "88657be5",
+      "title": "Simplified: Hypothesis 6 (Assumption-based): Novel Target in Microbiology/Molecular Evolution",
+      "description": "Generated through systematic assumption identification in Microbiology/Molecular Evolution.",
+      "mechanism": "Core simplified mechanism: Logical chain: If assumption X holds \u2192 intermediate effect Y \u2192 final outcome Z. Reduces complexity by focusing on primary pathway.",
+      "elo_rating": 1200.0,
+      "novelty_level": "unknown",
+      "status": "generated",
+      "testable_predictions": [
+        "Test 1: Validate foundational assumption",
+        "Test 2: Measure intermediate effect"
+      ],
+      "grounding_evidence": [],
+      "generation_method": "evolved",
+      "num_reviews": 0
+    },
+    {
+      "id": "cb8868ee",
+      "title": "Divergent: Hypothesis 5 (Literature-based): Microbiology/Molecular Evolution Mechanism",
+      "description": "Exploring alternative mechanistic pathway divergent from: Hypothesis 5 (Literature-based): Microbiology/Molecular Evolution Mechanism. Considers underexplored or unconventional mechanisms.",
+      "mechanism": "Alternative mechanism: Rather than the primary hypothesis, this explores secondary or tertiary pathways that may contribute to the observed phenomenon.",
+      "elo_rating": 1200.0,
+      "novelty_level": "unknown",
+      "status": "generated",
+      "testable_predictions": [],
+      "grounding_evidence": [],
+      "generation_method": "evolved",
+      "num_reviews": 0
+    }
+  ],
+  "tournament_matches": 18,
+  "statistics": {
+    "generation_agent": 12,
+    "reflection_agent": 12,
+    "ranking_agent": 18,
+    "evolution_agent": 3,
+    "meta_review_agent": 1
+  }
+}

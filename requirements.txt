@@ -1,0 +1,12 @@
+openai>=1.0.0
+streamlit>=1.30.0
+pandas>=2.0.0
+plotly>=5.0.0
+arxiv>=2.1.0
+biopython>=1.80
+
+# RAG System dependencies
+pypdf>=3.0.0
+sentence-transformers>=2.2.0
+chromadb>=0.4.0
+tiktoken>=0.5.0
