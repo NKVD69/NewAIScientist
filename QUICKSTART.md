@@ -3,35 +3,39 @@
 ## 🚀 Installation
 
 ### Prerequisites
-- Python 3.8+
-- `openai` library for LLM integration
-- `arxiv` library for literature search
-- Optional: Local LLM server (LM Studio or Ollama)
+- Python 3.9+
+- `pypdf`, `chromadb` for RAG system
+- `openai` and `streamlit` libraries
+- Recommended: Virtual Environment (.venv)
 
 ### Setup
 ```bash
-# Clone or download the files
-# Ensure you have Python 3.8+
-python --version
+# 1. Clone the repository
+git clone https://github.com/your-repo/ai-co-scientist.git
+cd ai-co-scientist
 
-# Install dependencies
+# 2. Create and activate virtual environment
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+# source .venv/bin/activate  # Mac/Linux
+
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# (Optional) Start your local LLM server
-# e.g., LM Studio Local Server on port 1234
+# 4. (Optional) Start your local LLM server (LM Studio/Ollama)
+```
 
-# Run the GUI (Recommended)
-streamlit run app.py
-
-# Or run the CLI script
-python co_scientist.py
+### Run the App
+```bash
+# Use the python executable from your venv
+.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
 ## 📖 Basic Usage (5 minutes)
 
 ### 1. Using the GUI (Streamlit)
 
-1.  Run `streamlit run app.py`
+1.  Run `.venv\Scripts\python.exe -m streamlit run app.py`
 2.  In the sidebar, verify the LLM settings:
     *   **URL**: `http://127.0.0.1:1234/v1`
     *   **Model**: `openai/gpt-oss-20b`

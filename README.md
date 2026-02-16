@@ -1,159 +1,102 @@
-# AI Co-Scientist: Multi-Agent System for Scientific Discovery
+# AI Co-Scientist : Système Multi-Agent pour la Découverte Scientifique (v2.0)
 
-Une implémentation du système **AI co-scientist**, inspirée par les travaux de **Sakana.ai** ("The AI Scientist") et le papier de **Google DeepMind** "Towards an AI co-scientist" (2025).
+Une implémentation du système **AI Co-Scientist**, inspirée par les travaux de **Sakana.ai** ("The AI Scientist") et le papier de **Google DeepMind** "Towards an AI co-scientist" (2025).
+
+> **Mise à jour Février 2026 (v2.0)** : Intégration d'un système **Agentic RAG** complet avec téléchargement de PDFs, indexation vectorielle locale (ChromaDB) et raffinement itératif des hypothèses.
 
 ## 🎯 Vue d'ensemble
 
 Ce système est une architecture multi-agent conçue pour :
-- **Rechercher** et analyser la littérature scientifique existante (RAG avec ArXiv).
+- **Rechercher** et lire la littérature scientifique (RAG sur ArXiv avec analyse PDF complète).
 - **Générer** des hypothèses scientifiques novelles et fondées ("grounded").
-- **Évaluer** la qualité, la nouveauté et la testabilité.
+- **Évaluer** la qualité, la nouveauté et la testabilité via un "Peer Review" simulé.
 - **Débattre** et **classer** les hypothèses via un tournoi (système Elo).
-- **Évoluer** et **améliorer** les hypothèses itérativement.
-- **Synthétiser** les insights et fournir une vue d'ensemble de la recherche.
+- **Évoluer** les meilleures idées via des stratégies créatives assistées par LLM.
+- **Synthétiser** les résultats dans un rapport de méta-revue complet.
 
-## 🏗️ Architecture
+## 🏗️ Architecture & Agents
 
-### Agents Spécialisés
+### 1. **Literature Agent (RAG Avancé)**
+- **Recherche** : Interroge l'API ArXiv pour trouver les derniers papiers.
+- **Lecture** : Télécharge automatiquement les PDFs.
+- **Indexation** : Découpe le texte en segments sémantiques et les stocke dans **ChromaDB**.
+- **Retrieval** : Fournit aux autres agents des passages précis (preuves) pour étayer chaque affirmation.
 
-#### 1. **Literature Agent (Nouveau)**
-- Interroge l'API **ArXiv** pour trouver des papiers pertinents en Open Access.
-- Analyse les résumés pour fournir un contexte scientifique réel au système.
+### 2. **Generation Agent (Self-Refining)**
+- Utilise le contexte RAG pour proposer des hypothèses.
+- Boucle de **Self-Refinement** : L'agent critique et améliore sa propre hypothèse avant de la soumettre.
 
-#### 2. **Generation Agent** 
-- **Mode RAG** : Utilise le contexte bibliographique fourni par le Literature Agent pour générer des hypothèses ancrées dans la réalité.
-- **Mode LLM** : Appelle un LLM local (Ollama, LM Studio) pour la créativité.
+### 3. **Reflection Agent (Critique)**
+- Agit comme un reviewer senior. Évalue :
+    - **Correctness** : Validité scientifique.
+    - **Novelty** : Originalité par rapport à l'état de l'art.
+    - **Testability** : Faisabilité expérimentale.
 
-#### 3. **Reflection Agent**
-- Agit comme un "reviewer scientifique senior". Analyse l'hypothèse et retourne une critique détaillée ainsi que des scores précis (Correctness, Novelty, Testability, Quality).
+### 4. **Evolution Agent (Créatif)**
+- Utilise le LLM pour appliquer des mutations aux meilleures hypothèses :
+    - *Simplification* (Rasoir d'Ockham).
+    - *Enrichissement* (Ajout de preuves RAG).
+    - *Pensée Divergente* (Exploration latérale).
 
-#### 4. **Ranking Agent**
-- Classe les hypothèses via un **tournoi Elo** en simulant des débats scientifiques.
+### 5. **Supervisor & Meta-Agents**
+- **Supervisor** : Orchestre le flux de travail asynchrone.
+- **Ranking Agent** : Organise des tournois Elo entre hypothèses.
+- **Meta-Review Agent** : Rédige le rapport final de la session.
 
-#### 5. **Proximity Agent**
-- Calcule la **similarité** entre les hypothèses pour le clustering et la déduplication.
+## 🚀 Installation & Démarrage
 
-#### 6. **Evolution Agent**
-- Améliore les hypothèses via des stratégies comme l'enrichissement, la simplification ou la combinaison.
+### Pré-requis
+- Python 3.9+
+- Un environnement virtuel est recommandé.
 
-#### 7. **Meta-Review Agent**
-- Synthétise les résultats, identifie les tendances et génère un aperçu de la recherche.
-
-#### 8. **Supervisor Agent**
-- Orchestre tous les agents et gère une file de tâches asynchrone.
-
-## 🚀 Installation
-
-```bash
-# 1. Cloner le dépôt
+### 1. Installation
+```powershell
+# Cloner le dépôt
 git clone https://github.com/your-repo/ai-co-scientist.git
 cd ai-co-scientist
 
-# 2. Installer les dépendances
+# Créer un environnement virtuel (si nécessaire)
+python -m venv .venv
+.venv\Scripts\activate
+
+# Installer les dépendances (incluant ChromaDB, PyPDF, etc.)
 pip install -r requirements.txt
-
-# 3. (Optionnel) Configurer un LLM local (voir section ci-dessous)
 ```
 
-## 🖥️ Interface Graphique (GUI)
+### 2. Configuration LLM (Local ou API)
+Le système est pré-configuré pour fonctionner avec **LM Studio** ou **Ollama** en local.
+- **URL par défaut** : `http://127.0.0.1:1234/v1`
+- **Modèle** : Configurable dans l'interface (ex: `mistral-7b`, `llama-3`).
 
-Une interface moderne basée sur **Streamlit** est disponible pour piloter l'assistant sans toucher au code.
+### 3. Lancement de l'Interface
+Utilisez la commande suivante pour lancer l'application Streamlit :
 
-### Lancer l'interface
-
-```bash
-streamlit run app.py
+```powershell
+.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-### Fonctionnalités
-- **Configuration** : Activez/Désactivez le LLM et configurez l'URL (Ollama/LM Studio) directement depuis la barre latérale.
-- **Tableau de Bord** : Suivez la génération, la revue et les tournois en temps réel.
-- **Littérature** : Visualisez les papiers ArXiv récupérés et utilisés pour la génération.
-- **Visualisation** : Graphiques interactifs des scores Elo et de la distribution Qualité/Nouveauté.
-- **Exploration** : Inspectez chaque hypothèse, ses critiques et ses preuves.
-- **Export** : Téléchargez le rapport complet en JSON.
+## 🖥️ Utilisation de l'Interface
 
-## 🧠 Connexion à un LLM Local (Ollama/LM Studio)
+1.  **Sidebar** :
+    *   **Utiliser LLM Local** : ✅ Activé.
+    *   **Activer RAG** : ✅ Cochez pour activer l'analyse profonde des PDFs.
+2.  **Objectif de Recherche** :
+    *   Cliquez sur **"🪄 Auto-détecter"** pour remplir les champs à partir d'une simple phrase.
+    *   Exemple : *"Trouver de nouvelles cibles thérapeutiques pour le glioblastome."*
+3.  **Lancer** :
+    *   Suivez la progression dans les logs (Recherche -> Lecture PDF -> Génération -> Tournoi).
+4.  **Résultats** :
+    *   Explorez les onglets **Hypothèses**, **Littérature** (sources PDF), et **Meta-Review**.
 
-Le système est conçu pour fonctionner avec un LLM local via une API compatible OpenAI. Cela alimente à la fois la **génération** et la **critique** (review) des hypothèses.
+## 🧠 Fonctionnalités Avancées
 
-1.  **Démarrez votre serveur LLM** :
-    *   **LM Studio** : Allez dans l'onglet "Local Server" et démarrez le serveur (port 1234 par défaut).
-    *   **Ollama** : Lancez `ollama serve` (port 11434 par défaut).
+*   **Mode "Agentic RAG"** : Le système ne se contente pas de résumés. Il lit le contenu intégral des papiers pour trouver des détails méthodologiques ou des résultats spécifiques ignorés dans les abstracts.
+*   **Persistance** : Tous les résultats et l'index vectoriel sont sauvegardés localement. Vous pouvez fermer et relancer l'application sans perdre le contexte.
 
-2.  **Configuration** :
-    *   **Via l'interface (recommandé)** : Entrez simplement l'URL et le nom du modèle dans la barre latérale de l'application Streamlit.
-        *   URL par défaut : `http://127.0.0.1:1234/v1`
-        *   Modèle par défaut : `openai/gpt-oss-20b`
-    *   **Via CLI** : Configurez les variables d'environnement :
-        ```bash
-        export OPENAI_API_BASE="http://127.0.0.1:1234/v1"
-        export OPENAI_MODEL_NAME="openai/gpt-oss-20b"
-        ```
+## 📝 Auteurs & Références
 
-Si aucun LLM n'est détecté, le système basculera automatiquement en mode simulé pour chaque agent.
+*   Basé sur le framework "AI Co-Scientist" de Google DeepMind (2025).
+*   Adapté et étendu avec une couche RAG locale pour une exécution autonome.
 
-## 💻 Utilisation en Ligne de Commande (CLI)
-
-Si vous préférez utiliser le script sans interface graphique :
-
-```bash
-python co_scientist.py
-```
-
-Ce script exécute un cycle de recherche complet sur un cas d'usage prédéfini (repositionnement de médicaments pour la leucémie) et exporte les résultats dans `co_scientist_results.json`.
-
-### Sortie Attendue
-
-Lorsque le LLM local est connecté, vous verrez :
-```
-✓ Generation Agent initialized with local LLM connection.
-✓ Reflection Agent initialized with local LLM connection.
-
-📚 Running literature search...
-✓ Found 5 relevant papers.
-
-🔬 Generating 5 initial hypotheses...
-...
-```
-
-## 🔧 Personnalisation
-
-### Changer le Modèle LLM
-
-Le modèle utilisé est défini dans `GenerationAgent` et `ReflectionAgent`. Par défaut, il est réglé sur `"openai/gpt-oss-20b"`. Vous pouvez le changer pour tout autre modèle que vous servez localement.
-
-```python
-# In co_scientist.py -> GenerationAgent -> _generate_with_llm
-response = await asyncio.to_thread(
-    self.llm_client.chat.completions.create,
-    model="llama3",  # Change this to your model
-    ...
-)
-```
-
-### Désactiver le LLM
-
-Pour forcer le mode de simulation, initialisez `CoScientist` avec `use_local_llm=False`.
-
-```python
-# In co_scientist.py -> main()
-co_scientist = CoScientist(use_local_llm=False)
-```
-
-## 📝 Limites et Considérations
-
-- **Qualité LLM** : La pertinence des hypothèses et des critiques dépend fortement du modèle utilisé.
-- **Ranking Agent** : L'agent de classement (`RankingAgent`) fonctionne encore en mode simulé (calcul de scores heuristiques). L'intégration du LLM pour simuler les débats est la prochaine étape.
-- **Accès aux Données** : Le système utilise l'API ArXiv publique. Assurez-vous d'avoir une connexion internet active.
-
-## 🎓 Références
-
-- **Paper** : "Towards an AI co-scientist" - Google DeepMind (2025)
-- **Authors** : Gottweis et al.
-
----
-
-**Status** : ✅ Fonctionnel (Hybride LLM/Simulation + RAG ArXiv + GUI)
-**Dernière mise à jour** : Janvier 2026
-**Auteur** : Reproduction du framework co-scientist
+**Version** : 2.0 (Février 2026)
+**Statut** : Stable

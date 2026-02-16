@@ -27,13 +27,13 @@ The AI Co-Scientist is a sophisticated multi-agent system designed to accelerate
 ┌───────────────┐  ┌──────────────────┐  ┌────────────────┐
 │  LITERATURE   │  │   GENERATION     │  │  REFLECTION    │
 │     AGENT     │  │      AGENT       │  │     AGENT      │
-├───────────────┤  ├──────────────────┤  ├────────────────┤
-│ • ArXiv/PubMed│  │ • Hypothesis     │  │ • Correctness  │
-│   search      │  │   creation       │  │   assessment   │
-│ • Context     │  │ • Assumption     │  │ • Novelty eval │
-│   retrieval   │  │   discovery      │  │ • Testability  │
+├───┬───────────┤  ├──────┬───────────┤  ├────────────────┤
+│ • ArXiv/PubMed│  │ • RAG Context    │  │ • Correctness  │
+│   search      │  │   Integration    │  │   assessment   │
+│ • PDF Indexing│◄─┤ • Assumption     │  │ • Novelty eval │
+│ • Vector DB   │  │   discovery      │  │ • Testability  │
 │               │  │ • Analogy        │  │   review       │
-└───────────────┘  └──────────────────┘  └────────────────┘
+└───┴───────────┘  └──────┴───────────┘  └────────────────┘
     │                      │                      │
     ▼                      ▼                      ▼
 ┌───────────────┐  ┌──────────────────┐  ┌────────────────┐
@@ -72,7 +72,8 @@ START
   │
   ├─► LITERATURE SEARCH CYCLE
   │   ├─ Query external databases (ArXiv, PubMed)
-  │   └─ Populate Context Memory with relevant papers
+  │   ├─ Download & Parse PDFs (background)
+  │   └─ Index chunks in Vector DB (RAG)
   │
   ├─► GENERATION CYCLE
   │   ├─ Generate new hypotheses (using literature context)
@@ -135,6 +136,10 @@ START
 5. MEMORY PERSISTENCE
    All Agents → Context Memory
    (State maintained across iterations)
+
+6. RAG RETRIEVAL (NEW)
+   Generation Agent ← Literature Agent (Vector DB)
+   (Semantic search for evidential context)
 ```
 
 ## Task Queue System
@@ -298,6 +303,10 @@ ContextMemory:
 ├─ tournament_history: List[TournamentMatch]
 │  ├─ Chronological record
 │  └─ Used for pattern analysis
+│
+├─ vector_store: ChromaDB (FileSystem)
+│  ├─ Embeddings of PDF chunks
+│  └─ Persistent semantic index
 │
 ├─ agent_performance_stats: Dict[agent_name, stats]
 │  ├─ Tracks each agent's contributions
