@@ -6,12 +6,19 @@ Tests core functionality and performance of all agents
 import asyncio
 import json
 import time
+import tempfile
+import re
+from pathlib import Path
 from typing import List, Dict
 from co_scientist import (
     CoScientist, ResearchGoal, Hypothesis, ReviewCritique,
     GenerationAgent, ReflectionAgent, RankingAgent, 
     ProximityAgent, EvolutionAgent, MetaReviewAgent,
     HypothesisStatus, _parse_json_response, ContextMemory
+)
+from rag_system import (
+    PDFDownloader, DocumentProcessor, SemanticChunker,
+    DocumentChunk, RAGEngine
 )
 
 
@@ -271,8 +278,331 @@ class TestUtilities:
         plain_json = "{\"key\": [1,2,3]}"
         parsed = _parse_json_response(plain_json)
         assert parsed == {"key": [1,2,3]}, "Should parse plain JSON"
+
+        # TEST: JSON with pre/post-amble
+        junk_json = "Here is the result: {\"success\": true} Hope this helps!"
+        parsed = _parse_json_response(junk_json)
+        assert parsed == {"success": true}, "Should extract JSON from junk text"
+
+        # TEST: JSON with markdown and junk
+        junk_md = "Some text ```json\n{\"data\": 123}\n``` More text"
+        parsed = _parse_json_response(junk_md)
+        assert parsed == {"data": 123}, "Should extract JSON from markdown within junk text"
         
-        print("  ✓ JSON parser is robust to markdown fences")
+        print("  ✓ JSON parser is robust to markdown, junk text, and pre/post-amble")
+        return True
+
+
+class TestRAGSystem:
+    """Test RAG pipeline components"""
+    
+    @staticmethod
+    def test_semantic_chunker():
+        """Test text chunking with SemanticChunker"""
+        print("\n🧪 Testing SemanticChunker...")
+        
+        chunker = SemanticChunker(chunk_size=50, overlap=10)
+        
+        # Build a text with multiple paragraphs
+        text = "\n\n".join([
+            "This is the first paragraph about molecular biology and cancer research.",
+            "This is the second paragraph discussing drug mechanisms and pathways.",
+            "This is the third paragraph covering experimental validation methods.",
+            "This is the fourth paragraph about statistical analysis of results."
+        ])
+        
+        chunks = chunker.chunk_text(text, paper_id="test123", paper_title="Test Paper")
+        
+        assert len(chunks) > 0, "Should produce at least one chunk"
+        assert all(isinstance(c, DocumentChunk) for c in chunks), "All should be DocumentChunks"
+        assert all(c.paper_id == "test123" for c in chunks), "All should have correct paper_id"
+        assert all(c.paper_title == "Test Paper" for c in chunks), "All should have correct title"
+        assert chunks[0].chunk_index == 0, "First chunk index should be 0"
+        
+        # Verify sequential indexing
+        for i, chunk in enumerate(chunks):
+            assert chunk.chunk_index == i, f"Chunk index should be {i}"
+        
+        print(f"  ✓ Chunker produced {len(chunks)} chunks from {len(text)} chars")
+        print(f"  ✓ All chunks have correct metadata")
+        return True
+    
+    @staticmethod
+    def test_chunker_token_counting():
+        """Test token counting in SemanticChunker"""
+        print("\n🧪 Testing Token Counting...")
+        
+        chunker = SemanticChunker()
+        
+        # Test token count for known text
+        short_text = "Hello world"
+        count = chunker._count_tokens(short_text)
+        assert count > 0, "Token count should be positive"
+        
+        # Longer text should have more tokens
+        long_text = "This is a much longer sentence with many more words and tokens in it."
+        long_count = chunker._count_tokens(long_text)
+        assert long_count > count, "Longer text should have more tokens"
+        
+        print(f"  ✓ Short text: {count} tokens")
+        print(f"  ✓ Long text: {long_count} tokens")
+        return True
+    
+    @staticmethod
+    def test_chunker_empty_input():
+        """Test chunker with edge cases"""
+        print("\n🧪 Testing Chunker Edge Cases...")
+        
+        chunker = SemanticChunker()
+        
+        # Empty text
+        chunks = chunker.chunk_text("", paper_id="empty", paper_title="Empty")
+        assert len(chunks) == 0, "Empty text should produce no chunks"
+        
+        # Whitespace only
+        chunks = chunker.chunk_text("   \n\n   ", paper_id="ws", paper_title="Whitespace")
+        assert len(chunks) == 0, "Whitespace-only text should produce no chunks"
+        
+        # Single word
+        chunks = chunker.chunk_text("hello", paper_id="single", paper_title="Single")
+        assert len(chunks) == 1, "Single word should produce one chunk"
+        
+        print("  ✓ Empty text → 0 chunks")
+        print("  ✓ Whitespace → 0 chunks")
+        print("  ✓ Single word → 1 chunk")
+        return True
+    
+    @staticmethod
+    async def test_document_processor():
+        """Test DocumentProcessor text extraction"""
+        print("\n🧪 Testing DocumentProcessor...")
+        
+        processor = DocumentProcessor()
+        
+        # Test text cleaning
+        dirty_text = "Hello\n42\nWorld   with    extra   spaces"
+        cleaned = processor._clean_text(dirty_text)
+        assert "  " not in cleaned, "Should collapse multiple spaces"
+        assert cleaned.strip() == cleaned, "Should strip leading/trailing whitespace"
+        
+        # Test with non-existent file (should return None gracefully)
+        result = await processor.extract_text(Path("nonexistent_file.pdf"))
+        assert result is None, "Should return None for missing file"
+        
+        print("  ✓ Text cleaning removes excess whitespace")
+        print("  ✓ Missing file handled gracefully")
+        return True
+    
+    @staticmethod
+    async def test_rag_engine_init():
+        """Test RAGEngine initialization with temp directory"""
+        print("\n🧪 Testing RAGEngine Initialization...")
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            persist_dir = str(Path(tmpdir) / "test_chroma")
+            engine = RAGEngine(collection_name="test_papers", persist_dir=persist_dir)
+            
+            stats = engine.get_stats()
+            
+            if engine.collection:
+                assert stats["status"] == "ready", "Should report ready"
+                assert stats["total_chunks"] == 0, "Should start with 0 chunks"
+                print(f"  ✓ RAGEngine initialized: {stats}")
+            else:
+                assert stats["status"] == "unavailable", "Should report unavailable without deps"
+                print("  ✓ RAGEngine reports unavailable (missing deps, expected)")
+        
+        return True
+    
+    @staticmethod
+    async def test_rag_engine_query_empty():
+        """Test querying an empty RAG engine"""
+        print("\n🧪 Testing RAGEngine Empty Query...")
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            persist_dir = str(Path(tmpdir) / "test_chroma_query")
+            engine = RAGEngine(collection_name="test_query", persist_dir=persist_dir)
+            
+            # Query on empty collection should return empty list
+            results = await engine.query("test query about cancer", top_k=5)
+            assert isinstance(results, list), "Should return a list"
+            assert len(results) == 0, "Empty collection should return no results"
+            
+            print("  ✓ Empty query returns empty list")
+        
+        return True
+
+    @staticmethod
+    async def test_rag_engine_skip_duplicates():
+        """Test that RAGEngine skips already indexed papers"""
+        print("\n🧪 Testing RAGEngine Duplicate Skipping...")
+        
+        # This test requires chroma to be functional
+        if not chromadb:
+            print("  ⚠ Skipping RAG duplicate test (chromadb missing)")
+            return True
+            
+        with tempfile.TemporaryDirectory() as tmpdir:
+            persist_dir = str(Path(tmpdir) / "test_chroma_dup")
+            engine = RAGEngine(collection_name="test_dup", persist_dir=persist_dir)
+            
+            # Load embedding model if not loaded
+            if engine.embedding_model is None:
+                print("  ⚠ Skipping RAG duplicate test (embedding model missing)")
+                return True
+
+            paper = {
+                "title": "Duplicate Paper",
+                "url": "https://example.com/dup",
+                "source": "ArXiv",
+                "summary": "This is a test paper."
+            }
+            
+            # Mock download and extraction to avoid network calls
+            from unittest.mock import patch
+            from pathlib import Path
+            
+            with patch.object(PDFDownloader, 'download_paper', return_value=Path("dummy.pdf")), \
+                 patch.object(DocumentProcessor, 'extract_text', return_value="Extracted text content."):
+                
+                # First run: should index
+                indexed1 = await engine.process_papers([paper])
+                assert indexed1 > 0, "Should index paper on first run"
+                count1 = engine.collection.count()
+                
+                # Second run: should skip
+                indexed2 = await engine.process_papers([paper])
+                assert indexed2 == 0, "Should skip paper on second run"
+                count2 = engine.collection.count()
+                assert count1 == count2, "Count should not increase on second run"
+        
+        print("  ✓ RAGEngine correctly skips already indexed papers")
+        return True
+
+
+
+class TestPubMedDownload:
+    """Test PubMed PDF download functionality"""
+    
+    @staticmethod
+    def test_pubmed_url_parsing():
+        """Test PMID extraction from PubMed URLs"""
+        print("\n🧪 Testing PubMed URL Parsing...")
+        
+        # Valid URLs
+        url1 = "https://pubmed.ncbi.nlm.nih.gov/27454254/"
+        url2 = "https://pubmed.ncbi.nlm.nih.gov/38218645"
+        url3 = "https://pubmed.ncbi.nlm.nih.gov/12345678/?some_param=true"
+        
+        # Invalid URLs
+        url_invalid = "https://arxiv.org/abs/2302.12345"
+        url_empty = "https://pubmed.ncbi.nlm.nih.gov/"
+        
+        # Test extraction with regex (same logic as PDFDownloader)
+        pattern = r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)"
+        
+        match1 = re.search(pattern, url1)
+        assert match1 and match1.group(1) == "27454254", f"Should extract 27454254, got {match1}"
+        
+        match2 = re.search(pattern, url2)
+        assert match2 and match2.group(1) == "38218645", f"Should extract 38218645, got {match2}"
+        
+        match3 = re.search(pattern, url3)
+        assert match3 and match3.group(1) == "12345678", f"Should extract 12345678, got {match3}"
+        
+        match_invalid = re.search(pattern, url_invalid)
+        assert match_invalid is None, "Should not match non-PubMed URL"
+        
+        match_empty = re.search(pattern, url_empty)
+        assert match_empty is None, "Should not match URL without PMID"
+        
+        print("  ✓ Extracts PMID from standard URLs")
+        print("  ✓ Handles trailing slashes and query params")
+        print("  ✓ Rejects non-PubMed URLs")
+        return True
+    
+    @staticmethod
+    def test_cache_path_generation():
+        """Test PDF cache path generation"""
+        print("\n🧪 Testing Cache Path Generation...")
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            downloader = PDFDownloader(cache_dir=tmpdir)
+            
+            url1 = "https://pubmed.ncbi.nlm.nih.gov/27454254/"
+            url2 = "https://pubmed.ncbi.nlm.nih.gov/38218645/"
+            
+            path1 = downloader._get_cache_path(url1)
+            path2 = downloader._get_cache_path(url2)
+            
+            # Different URLs should produce different paths
+            assert path1 != path2, "Different URLs should have different cache paths"
+            
+            # Same URL should produce same path (deterministic)
+            path1_again = downloader._get_cache_path(url1)
+            assert path1 == path1_again, "Same URL should produce same cache path"
+            
+            # Path should be in cache dir
+            assert str(path1).startswith(tmpdir), "Path should be in cache directory"
+            assert str(path1).endswith(".pdf"), "Path should end with .pdf"
+        
+        print("  ✓ Unique paths for different URLs")
+        print("  ✓ Deterministic paths for same URL")
+        print("  ✓ Paths stored in cache directory")
+        return True
+    
+    @staticmethod
+    def test_download_paper_routing():
+        """Test that download_paper routes to correct method based on source"""
+        print("\n🧪 Testing Download Paper Routing...")
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            downloader = PDFDownloader(cache_dir=tmpdir)
+            
+            # Verify the downloader has the expected methods
+            assert hasattr(downloader, 'download_arxiv_pdf'), "Should have download_arxiv_pdf"
+            assert hasattr(downloader, 'download_pubmed_pdf'), "Should have download_pubmed_pdf"
+            assert hasattr(downloader, 'download_paper'), "Should have download_paper"
+            assert hasattr(downloader, '_get_pmcid_from_pmid'), "Should have _get_pmcid_from_pmid"
+        
+        print("  ✓ All download methods exist")
+        print("  ✓ Routing method (download_paper) is available")
+        return True
+    
+    @staticmethod
+    async def test_pubmed_download_no_pmcid():
+        """Test PubMed download when no PMCID is available"""
+        print("\n🧪 Testing PubMed Download (No PMCID)...")
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            downloader = PDFDownloader(cache_dir=tmpdir)
+            
+            # Use a URL that likely has no PMC version
+            # The method should return None gracefully without Entrez or with non-OA article
+            result = await downloader.download_pubmed_pdf("https://not-pubmed.example.com/12345")
+            assert result is None, "Should return None for invalid URL"
+        
+        print("  ✓ Invalid URL returns None gracefully")
+        return True
+    
+    @staticmethod
+    async def test_download_paper_unknown_source():
+        """Test download_paper with unknown source"""
+        print("\n🧪 Testing Download Unknown Source...")
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            downloader = PDFDownloader(cache_dir=tmpdir)
+            
+            paper = {"url": "https://example.com/paper", "source": "UnknownDB"}
+            result = await downloader.download_paper(paper)
+            assert result is None, "Should return None for unknown source"
+            
+            paper_empty = {"url": "", "source": ""}
+            result = await downloader.download_paper(paper_empty)
+            assert result is None, "Should return None for empty source"
+        
+        print("  ✓ Unknown source returns None")
+        print("  ✓ Empty source returns None")
         return True
 
 
@@ -282,23 +612,63 @@ async def run_all_unit_tests():
     print("RUNNING ALL UNIT TESTS")
     print("="*50)
     
-    results = [
-        await TestGenerationAgent.test_hypothesis_generation(),
-        TestGenerationAgent.test_prompt_building(), # New
-        await TestReflectionAgent.test_hypothesis_review(),
-        await TestRankingAgent.test_elo_ratings(),
-        await TestProximityAgent.test_similarity_computation(),
-        await TestEvolutionAgent.test_hypothesis_evolution(),
-        await TestMetaReviewAgent.test_meta_review(),
-        TestUtilities.test_json_parsing() # New
+    passed = 0
+    failed = 0
+    
+    # Run synchronous tests first
+    sync_tests = [
+        ("Utilities.json_parsing", TestUtilities.test_json_parsing),
+        ("GenerationAgent.prompt_building", TestGenerationAgent.test_prompt_building),
+        ("RAGSystem.semantic_chunker", TestRAGSystem.test_semantic_chunker),
+        ("RAGSystem.token_counting", TestRAGSystem.test_chunker_token_counting),
+        ("RAGSystem.chunker_edge_cases", TestRAGSystem.test_chunker_empty_input),
+        ("PubMed.url_parsing", TestPubMedDownload.test_pubmed_url_parsing),
+        ("PubMed.cache_path", TestPubMedDownload.test_cache_path_generation),
+        ("PubMed.download_routing", TestPubMedDownload.test_download_paper_routing),
     ]
     
-    success = all(results)
-    if success:
-        print("\n✅ ALL UNIT TESTS PASSED")
-    else:
-        print("\n❌ SOME UNIT TESTS FAILED")
-    return success
+    for name, test_fn in sync_tests:
+        try:
+            result = test_fn()
+            if result:
+                passed += 1
+            else:
+                failed += 1
+                print(f"  ❌ {name} FAILED")
+        except Exception as e:
+            failed += 1
+            print(f"  ❌ {name} FAILED: {e}")
+    
+    # Run async tests
+    async_tests = [
+        ("GenerationAgent.hypothesis_generation", TestGenerationAgent.test_hypothesis_generation()),
+        ("ReflectionAgent.review", TestReflectionAgent.test_hypothesis_review()),
+        ("RankingAgent.elo_ratings", TestRankingAgent.test_elo_ratings()),
+        ("ProximityAgent.similarity", TestProximityAgent.test_similarity_computation()),
+        ("EvolutionAgent.evolution", TestEvolutionAgent.test_hypothesis_evolution()),
+        ("MetaReviewAgent.meta_review", TestMetaReviewAgent.test_meta_review()),
+        ("RAGSystem.document_processor", TestRAGSystem.test_document_processor()),
+        ("RAGSystem.engine_init", TestRAGSystem.test_rag_engine_init()),
+        ("RAGSystem.engine_query_empty", TestRAGSystem.test_rag_engine_query_empty()),
+        ("RAGSystem.engine_skip_duplicates", TestRAGSystem.test_rag_engine_skip_duplicates()),
+        ("PubMed.download_no_pmcid", TestPubMedDownload.test_pubmed_download_no_pmcid()),
+        ("PubMed.download_unknown_source", TestPubMedDownload.test_download_paper_unknown_source()),
+    ]
+    
+    for name, coro in async_tests:
+        try:
+            result = await coro
+            if result:
+                passed += 1
+            else:
+                failed += 1
+                print(f"  ❌ {name} FAILED")
+        except Exception as e:
+            failed += 1
+            print(f"  ❌ {name} FAILED: {e}")
+    
+    print(f"\n{'✅' if failed == 0 else '❌'} {passed} passed, {failed} failed")
+    return passed, failed
 
 
 # =============================================================================

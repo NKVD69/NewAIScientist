@@ -12,7 +12,9 @@ This implementation includes:
 
 import asyncio
 import json
+import logging
 import os
+import random
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
@@ -23,23 +25,42 @@ import math
 from collections import defaultdict
 import re
 
+import config
+
+logger = logging.getLogger(__name__)
+
 
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
 
 def _parse_json_response(content: str) -> Any:
-    """Robustly parse JSON from LLM responses, stripping markdown fences."""
+    """Robustly parse JSON from LLM responses, stripping markdown fences and pre/post-amble."""
     content = content.strip()
-    # Remove markdown code fences
-    if content.startswith("```json"):
-        content = content[7:]
-    elif content.startswith("```"):
-        content = content[3:]
-    if content.endswith("```"):
-        content = content[:-3]
-    content = content.strip()
-    return json.loads(content)
+    
+    # Try direct parse first
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+        
+    # Remove markdown code fences if present
+    if "```json" in content:
+        content = content.split("```json")[1].split("```")[0].strip()
+    elif "```" in content:
+        content = content.split("```")[1].split("```")[0].strip()
+        
+    # Use regex to find the JSON block if still failing
+    try:
+        # Look for the first '{' and last '}'
+        import re
+        match = re.search(r'(\{.*\}|\[.*\])', content, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+    except (json.JSONDecodeError, ImportError):
+        pass
+        
+    return json.loads(content)  # Final attempt, will raise error if still invalid
 
 # Attempt to import openai, but don't fail if not installed
 try:
@@ -56,7 +77,7 @@ except ImportError:
 # Attempt to import biopython for PubMed
 try:
     from Bio import Entrez
-    Entrez.email = "your.email@example.com"  # Required by NCBI
+    Entrez.email = config.get_entrez_email()
 except ImportError:
     Entrez = None
 
@@ -176,10 +197,7 @@ class LiteratureAgent:
         
         if use_local_llm and openai:
             try:
-                self.llm_client = openai.OpenAI(
-                    base_url=os.environ.get("OPENAI_API_BASE", "http://127.0.0.1:1234/v1"),
-                    api_key=os.environ.get("OPENAI_API_KEY", "lm-studio"),
-                )
+                self.llm_client = config.get_openai_client()
             except Exception:
                 pass
         
@@ -187,9 +205,9 @@ class LiteratureAgent:
         if enable_rag and RAGEngine:
             try:
                 self.rag_engine = RAGEngine()
-                print("✓ RAG system initialized")
+                logger.info("RAG system initialized")
             except Exception as e:
-                print(f"⚠ RAG initialization failed: {e}")
+                logger.warning("RAG initialization failed: %s", e)
                 self.rag_engine = None
 
     async def _generate_search_queries(self, goal: ResearchGoal) -> List[str]:
@@ -212,7 +230,7 @@ class LiteratureAgent:
             try:
                 response = await asyncio.to_thread(
                     self.llm_client.chat.completions.create,
-                    model=os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b"),
+                    model=config.get_llm_model_name(),
                     messages=[{"role": "user", "content": prompt}],
                     response_format={"type": "json_object"}
                 )
@@ -220,13 +238,13 @@ class LiteratureAgent:
                 # Fallback to text mode if JSON format not supported
                 response = await asyncio.to_thread(
                     self.llm_client.chat.completions.create,
-                    model=os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b"),
+                    model=config.get_llm_model_name(),
                     messages=[{"role": "user", "content": prompt}],
                 )
             data = _parse_json_response(response.choices[0].message.content)
             return data.get("queries", [goal.title])
         except Exception as e:
-            print(f"⚠ Query generation failed: {e}")
+            logger.warning("Query generation failed: %s", e)
             return [goal.title]
 
     async def _refine_query(self, goal: ResearchGoal, current_papers: List[Dict], last_query: str) -> str:
@@ -251,7 +269,7 @@ class LiteratureAgent:
         try:
             response = await asyncio.to_thread(
                 self.llm_client.chat.completions.create,
-                model=os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b"),
+                model=config.get_llm_model_name(),
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
             )
@@ -274,39 +292,53 @@ class LiteratureAgent:
         all_papers = []
         known_titles = set()
         
-        # 1. Initial Search
-        current_query = goal.title
+        def normalize_title(title: str) -> str:
+            """Normalize title for deduplication: lowercase and alphanumeric only."""
+            return re.sub(r'[^a-zA-Z0-9]', '', title.lower())
+
+        # 1. Initial Search Queries
         queries = await self._generate_search_queries(goal)
-        if queries:
-            current_query = queries[0]
+        if not queries:
+            queries = [goal.title]
             
-        print(f"   🔍 Iteration 1: Query = {current_query}")
+        print(f"   🔍 Expanded Search: {len(queries)} initial queries generated.")
+
+        current_query = queries[0]
 
         for i in range(iterations):
-            # Execute search on all sources
-            iteration_papers = []
-            for source in sources:
-                source = source.lower()
-                print(f"📚 Searching {source.upper()} (Iter {i+1})...")
-                
-                if source == "arxiv":
-                    papers = await self._search_arxiv(current_query, max_results)
-                elif source == "pubmed":
-                    papers = await self._search_pubmed(current_query, max_results)
-                else:
-                    papers = []
-                
-                iteration_papers.extend(papers)
+            # Execute search for all active queries in this iteration
+            # In iteration 0, we use all generated queries. In subsequent ones, we use the refined query.
+            active_queries = queries if i == 0 else [current_query]
             
-            # Filter duplicates
+            iteration_papers = []
+            for q in active_queries:
+                if i == 0:
+                    print(f"      - Query: {q}")
+                
+                for source in sources:
+                    source = source.lower()
+                    if i > 0:
+                        print(f"📚 Searching {source.upper()} (Iter {i+1})...")
+                    
+                    if source == "arxiv":
+                        papers = await self._search_arxiv(q, max_results)
+                    elif source == "pubmed":
+                        papers = await self._search_pubmed(q, max_results)
+                    else:
+                        papers = []
+                    
+                    iteration_papers.extend(papers)
+            
+            # Filter duplicates (case-insensitive)
             new_papers = []
             for p in iteration_papers:
-                if p['title'] not in known_titles:
+                norm_t = normalize_title(p['title'])
+                if norm_t not in known_titles:
                     new_papers.append(p)
-                    known_titles.add(p['title'])
+                    known_titles.add(norm_t)
                     all_papers.append(p)
             
-            print(f"   Found {len(new_papers)} new papers.")
+            print(f"   Found {len(new_papers)} new unique papers.")
             
             # If no new papers or last iteration, stop
             if not new_papers or i == iterations - 1:
@@ -314,14 +346,14 @@ class LiteratureAgent:
                 
             # Refine query for next iteration based on what we found
             print("   🤔 Analyzing results to refine search...")
-            refinement = await self._refine_query(goal, all_papers, current_query)
+            refinement = await self._refine_query(goal, all_papers, active_queries[0])
             if refinement:
                 current_query = refinement
                 print(f"   🔄 Refined Query: {current_query}")
             else:
                 break
         
-        return all_papers[:max_results * 2] # Allow more results total for broader context
+        return all_papers[:max_results * 2]
 
     async def extract_key_findings(self, papers: List[Dict], goal: ResearchGoal = None) -> str:
         """
@@ -498,10 +530,7 @@ class GraphAgent:
         
         if use_local_llm and openai:
             try:
-                self.llm_client = openai.OpenAI(
-                    base_url=os.environ.get("OPENAI_API_BASE", "http://127.0.0.1:1234/v1"),
-                    api_key=os.environ.get("OPENAI_API_KEY", "lm-studio"), 
-                )
+                self.llm_client = config.get_openai_client()
             except Exception:
                 self.llm_client = None
 
@@ -531,7 +560,7 @@ class GraphAgent:
         try:
             response = await asyncio.to_thread(
                 self.llm_client.chat.completions.create,
-                model=os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b"),
+                model=config.get_llm_model_name(),
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 # response_format={"type": "json_object"} # Often causes 400 with some models, better parse manually
@@ -574,14 +603,10 @@ class GenerationAgent:
         
         if use_local_llm and openai:
             try:
-                # Configure for local LLM server (Ollama, LM Studio)
-                self.llm_client = openai.OpenAI(
-                    base_url=os.environ.get("OPENAI_API_BASE", "http://127.0.0.1:1234/v1"),
-                    api_key=os.environ.get("OPENAI_API_KEY", "lm-studio"), 
-                )
-                print("✓ Generation Agent initialized with local LLM connection.")
+                self.llm_client = config.get_openai_client()
+                logger.info("Generation Agent initialized with local LLM connection.")
             except Exception as e:
-                print(f"⚠ Could not connect to local LLM: {e}")
+                logger.warning("Could not connect to local LLM: %s", e)
                 self.llm_client = None
         elif use_local_llm and not openai:
             print("⚠ `openai` library not found. Falling back to simulated generation.")
@@ -649,7 +674,7 @@ class GenerationAgent:
             try:
                 response = await asyncio.to_thread(
                     self.llm_client.chat.completions.create,
-                    model=os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b"),
+                    model=config.get_llm_model_name(),
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.3,
                     response_format={"type": "json_object"},
@@ -658,7 +683,7 @@ class GenerationAgent:
                 # Fallback to text mode if JSON mode fails (e.g. 400 Bad Request)
                 response = await asyncio.to_thread(
                     self.llm_client.chat.completions.create,
-                    model=os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b"),
+                    model=config.get_llm_model_name(),
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.3,
                 )
@@ -750,7 +775,7 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
         """Generate hypotheses using a local LLM."""
         prompt = self._build_llm_prompt(goal, context_papers, count, rag_context)
         
-        model_name = os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b")
+        model_name = config.get_llm_model_name()
         
         try:
             # First attempt with json_object format
@@ -940,13 +965,10 @@ class ReflectionAgent:
         
         if use_local_llm and openai:
             try:
-                self.llm_client = openai.OpenAI(
-                    base_url=os.environ.get("OPENAI_API_BASE", "http://127.0.0.1:1234/v1"),
-                    api_key=os.environ.get("OPENAI_API_KEY", "lm-studio"),
-                )
-                print("✓ Reflection Agent initialized with local LLM connection.")
+                self.llm_client = config.get_openai_client()
+                logger.info("Reflection Agent initialized with local LLM connection.")
             except Exception as e:
-                print(f"⚠ Reflection Agent could not connect to local LLM: {e}")
+                logger.warning("Reflection Agent could not connect to local LLM: %s", e)
                 self.llm_client = None
 
     async def review_hypothesis(self, 
@@ -975,7 +997,7 @@ class ReflectionAgent:
         """Perform review using local LLM"""
         prompt = self._build_review_prompt(hypothesis, goal)
         
-        model_name = os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b")
+        model_name = config.get_llm_model_name()
         
         try:
             response = await asyncio.to_thread(
@@ -1368,10 +1390,7 @@ class EvolutionAgent:
         
         if use_local_llm and openai:
             try:
-                self.llm_client = openai.OpenAI(
-                    base_url=os.environ.get("OPENAI_API_BASE", "http://127.0.0.1:1234/v1"),
-                    api_key=os.environ.get("OPENAI_API_KEY", "lm-studio"),
-                )
+                self.llm_client = config.get_openai_client()
             except Exception:
                 self.llm_client = None
     
@@ -1485,7 +1504,7 @@ Output ONLY the JSON object.
             try:
                 response = await asyncio.to_thread(
                     self.llm_client.chat.completions.create,
-                    model=os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b"),
+                    model=config.get_llm_model_name(),
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.5,
                     response_format={"type": "json_object"},
@@ -1493,7 +1512,7 @@ Output ONLY the JSON object.
             except Exception:
                 response = await asyncio.to_thread(
                     self.llm_client.chat.completions.create,
-                    model=os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b"),
+                    model=config.get_llm_model_name(),
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.5,
                 )
@@ -1833,7 +1852,7 @@ class CoScientist:
         try:
             response = await asyncio.to_thread(
                 self.generation_agent.llm_client.chat.completions.create,
-                model=os.environ.get("OPENAI_MODEL_NAME", "openai/gpt-oss-20b"),
+                model=config.get_llm_model_name(),
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 # response_format={"type": "json_object"}, # Removed for better local model compatibility
@@ -1955,7 +1974,7 @@ class CoScientist:
         
         for i in range(min(num_matches, len(reviewed) * 2)):
             # Select two different hypotheses
-            import random
+            # random is imported at module level
             if len(reviewed) >= 2:
                 hyp_a = random.choice(reviewed)
                 hyp_b = random.choice([h for h in reviewed if h.id != hyp_a.id])

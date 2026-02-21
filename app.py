@@ -3,9 +3,13 @@ import asyncio
 import pandas as pd
 import json
 import os
+import logging
 from datetime import datetime
 import plotly.express as px
 from dataclasses import asdict
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Import du backend
 from co_scientist import CoScientist, ResearchGoal, Hypothesis
@@ -306,8 +310,9 @@ async def run_research_cycle():
         st.session_state.results = cs
         
     except Exception as e:
-        status_container.update(label="Erreur", state="error")
-        st.error(f"Une erreur est survenue: {str(e)}")
+        logger.error(f"Erreur critique dans run_research_cycle: {str(e)}", exc_info=True)
+        status_container.update(label="Erreur critique", state="error")
+        st.error(f"Une erreur fatale est survenue dans le workflow: {str(e)}")
     
     if cs.generation_agent.last_error:
         st.warning(f"⚠️ Note: Le générateur a rencontré une erreur et a utilisé la simulation : \n\n{cs.generation_agent.last_error}")
@@ -322,7 +327,11 @@ if submit_btn:
         "constraints": constraints
     })
     st.session_state.is_running = True
-    asyncio.run(run_research_cycle())
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(run_research_cycle())
+    finally:
+        loop.close()
     st.session_state.is_running = False
     st.rerun()
 

@@ -5,12 +5,17 @@ Provides advanced document retrieval and semantic search capabilities
 
 import os
 import asyncio
+import logging
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 import urllib.request
 import hashlib
 import re
+
+import config
+
+logger = logging.getLogger(__name__)
 
 # PDF and text processing
 try:
@@ -40,7 +45,7 @@ except ImportError:
 # PubMed Tools
 try:
     from Bio import Entrez
-    Entrez.email = os.environ.get("ENTREZ_EMAIL", "ai-scientist@example.com")
+    Entrez.email = config.get_entrez_email()
 except ImportError:
     Entrez = None
 
@@ -70,13 +75,34 @@ class PDFDownloader:
         return self.cache_dir / f"{url_hash}.pdf"
     
     async def download_arxiv_pdf(self, paper_url: str) -> Optional[Path]:
-        """Download PDF from ArXiv URL"""
+        """Download PDF from ArXiv URL with robust conversion."""
         try:
+            # Clean URL
+            paper_url = paper_url.strip()
+            
             # Convert abstract URL to PDF URL
-            if "/abs/" in paper_url:
-                pdf_url = paper_url.replace("/abs/", "/pdf/") + ".pdf"
+            # Handles:
+            # - http://arxiv.org/abs/2103.12345
+            # - https://arxiv.org/pdf/2103.12345.pdf
+            # - arxiv:2103.12345
+            
+            if "arxiv.org/abs/" in paper_url:
+                pdf_url = paper_url.replace("/abs/", "/pdf/")
+                if not pdf_url.endswith(".pdf"):
+                    pdf_url += ".pdf"
+            elif "arxiv.org/pdf/" in paper_url:
+                pdf_url = paper_url
+                if not pdf_url.endswith(".pdf"):
+                    pdf_url += ".pdf"
+            elif paper_url.startswith("arxiv:"):
+                arxiv_id = paper_url.split(":")[1]
+                pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
             else:
                 pdf_url = paper_url
+                if "/abs/" in pdf_url:
+                    pdf_url = pdf_url.replace("/abs/", "/pdf/")
+                if not pdf_url.endswith(".pdf") and "arxiv.org" in pdf_url:
+                    pdf_url += ".pdf"
             
             cache_path = self._get_cache_path(pdf_url)
             
@@ -105,15 +131,16 @@ class PDFDownloader:
                 handle = Entrez.elink(dbfrom="pubmed", db="pmc", linkname="pubmed_pmc", id=pmid)
                 record = Entrez.read(handle)
                 handle.close()
-                if record and record[0]["LinkSetDb"]:
-                    # Extract PMCID (e.g., "3040823")
-                    return record[0]["LinkSetDb"][0]["Link"][0]["Id"]
+                if record and len(record) > 0 and record[0].get("LinkSetDb") and len(record[0]["LinkSetDb"]) > 0:
+                    links = record[0]["LinkSetDb"][0].get("Link", [])
+                    if links:
+                        return links[0]["Id"]
                 return None
             
             pmcid = await asyncio.to_thread(call_entrez)
             return pmcid
         except Exception as e:
-            print(f"⚠ Failed to convert PMID {pmid} to PMCID: {e}")
+            logger.warning("Failed to convert PMID %s to PMCID: %s", pmid, e)
             return None
 
     async def download_pubmed_pdf(self, paper_url: str) -> Optional[Path]:
@@ -383,6 +410,19 @@ class RAGEngine:
         
         for paper in papers:
             try:
+                # Generate stable paper ID
+                paper_id = hashlib.md5(paper['url'].encode()).hexdigest()[:16]
+                
+                # BUG 4 FIX: Check if paper is already indexed to skip processing
+                if self.collection:
+                    existing = self.collection.get(
+                        where={"paper_id": paper_id},
+                        limit=1
+                    )
+                    if existing and existing['ids']:
+                        print(f"  ⏭ Skipping: {paper['title'][:60]}... (Already indexed)")
+                        continue
+
                 print(f"📄 Processing: {paper['title'][:60]}...")
                 
                 # Download PDF
@@ -398,7 +438,6 @@ class RAGEngine:
                     continue
                 
                 # Chunk text
-                paper_id = hashlib.md5(paper['url'].encode()).hexdigest()[:16]
                 chunks = self.chunker.chunk_text(text, paper_id, paper['title'])
                 print(f"  ✓ Created {len(chunks)} chunks")
                 
