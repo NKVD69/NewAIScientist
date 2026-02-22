@@ -355,6 +355,12 @@ class LiteratureAgent:
         
         return all_papers[:max_results * 2]
 
+    def get_rag_stats(self) -> Dict:
+        """Get statistics from the RAG engine if enabled."""
+        if self.rag_engine:
+            return self.rag_engine.get_stats()
+        return {"status": "disabled", "total_chunks": 0}
+
     async def extract_key_findings(self, papers: List[Dict], goal: ResearchGoal = None) -> str:
         """
         Extract and synthesize key findings from a list of papers for CAG context.

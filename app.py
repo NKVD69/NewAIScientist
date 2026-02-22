@@ -148,6 +148,7 @@ with st.sidebar:
     if 'results' in st.session_state and st.session_state.results is not None:
         try:
             rag_stats = st.session_state.results.literature_agent.get_rag_stats()
+
             if rag_stats['status'] == 'ready':
                 st.success(f"🧠 RAG actif: {rag_stats['total_chunks']} chunks indexés")
             elif rag_stats['status'] == 'disabled':
@@ -504,12 +505,15 @@ if st.session_state.results:
         if st.button("Générer le rapport final"):
             with st.spinner("Génération du rapport..."):
                 try:
-                    # Création d'une nouvelle boucle pour cet événement spécifique si nécessaire
-                    mr = asyncio.run(cs.meta_review_agent.generate_meta_review(
+                    # Fix: Use new event loop to avoid conflict with streamlit loop
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    mr = loop.run_until_complete(cs.meta_review_agent.generate_meta_review(
                         list(cs.context_memory.hypotheses.values()),
                         cs.context_memory.tournament_history,
                         cs.context_memory.research_goal
                     ))
+                    loop.close()
                     st.markdown(mr['research_overview'])
                     
                     st.markdown("### 💡 Suggestions d'amélioration")
