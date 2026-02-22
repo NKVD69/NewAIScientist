@@ -692,7 +692,11 @@ async def test_full_workflow():
     
     # Run workflow
     print("\n1. Generating hypotheses...")
+    co_scientist = CoScientist()
+    goal = ResearchGoal(title="Test", domain="test")
+    co_scientist.context_memory.research_goal = goal
     hypotheses = await co_scientist.run_hypothesis_generation_cycle(num_hypotheses=5)
+
     assert len(hypotheses) == 5
     print(f"   ✓ Generated {len(hypotheses)} hypotheses")
     
@@ -748,7 +752,7 @@ async def benchmark_generation_speed():
     
     for count in [10, 50, 100]:
         start = time.time()
-        hypotheses = await agent.generate_initial_hypotheses(goal, count=count)
+        hypotheses = await agent.generate_initial_hypotheses(goal, context_papers=[], count=count)
         elapsed = time.time() - start
         
         rate = count / elapsed
