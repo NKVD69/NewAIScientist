@@ -41,7 +41,7 @@ class TestGenerationAgent:
             domain="test_domain"
         )
         
-        hypotheses = await agent.generate_initial_hypotheses(goal, count=3)
+        hypotheses = await agent.generate_initial_hypotheses(goal, context_papers=[], count=3)
         
         # Assertions
         assert len(hypotheses) == 3, "Should generate 3 hypotheses"
@@ -282,7 +282,7 @@ class TestUtilities:
         # TEST: JSON with pre/post-amble
         junk_json = "Here is the result: {\"success\": true} Hope this helps!"
         parsed = _parse_json_response(junk_json)
-        assert parsed == {"success": true}, "Should extract JSON from junk text"
+        assert parsed == {"success": True}, "Should extract JSON from junk text"
 
         # TEST: JSON with markdown and junk
         junk_md = "Some text ```json\n{\"data\": 123}\n``` More text"
@@ -766,7 +766,7 @@ async def benchmark_review_speed():
     
     # Create hypotheses
     gen_agent = GenerationAgent()
-    hypotheses = await gen_agent.generate_initial_hypotheses(goal, count=20)
+    hypotheses = await gen_agent.generate_initial_hypotheses(goal, context_papers=[], count=20)
     
     start = time.time()
     for h in hypotheses:
@@ -787,7 +787,7 @@ async def benchmark_tournament_speed():
     gen_agent = GenerationAgent()
     goal = ResearchGoal(title="Benchmark", domain="test")
     
-    hypotheses = await gen_agent.generate_initial_hypotheses(goal, count=10)
+    hypotheses = await gen_agent.generate_initial_hypotheses(goal, context_papers=[], count=10)
     
     start = time.time()
     matches = 0
@@ -812,7 +812,7 @@ async def benchmark_proximity_speed():
     goal = ResearchGoal(title="Benchmark", domain="test")
     
     for count in [10, 50, 100]:
-        hypotheses = await gen_agent.generate_initial_hypotheses(goal, count=count)
+        hypotheses = await gen_agent.generate_initial_hypotheses(goal, context_papers=[], count=count)
         
         start = time.time()
         proximity = await agent.compute_proximity(hypotheses)
@@ -861,7 +861,7 @@ async def test_memory_efficiency():
     goal = ResearchGoal(title="Test", domain="test")
     
     for batch in range(3):
-        hypotheses = await gen_agent.generate_initial_hypotheses(goal, count=50)
+        hypotheses = await gen_agent.generate_initial_hypotheses(goal, context_papers=[], count=50)
         for h in hypotheses:
             co_scientist.context_memory.hypotheses[h.id] = h
         
