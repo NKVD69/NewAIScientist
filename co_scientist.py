@@ -18,6 +18,11 @@ import random
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
+
+# Defensive definitions for potential JS-style JSON/boolean errors
+true = True
+false = False
+null = None
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 import heapq

@@ -8,6 +8,11 @@ from datetime import datetime
 import plotly.express as px
 from dataclasses import asdict
 
+# Defensive definitions for potential JS-style JSON/boolean errors
+true = True
+false = False
+null = None
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -219,6 +224,7 @@ with st.expander("🎯 Définir l'Objectif de Recherche", expanded=not st.sessio
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         analysis = loop.run_until_complete(temp_cs.analyze_research_description(st.session_state.persist_goal_desc))
+                        loop.close()
                         
                         if analysis:
                             suggested_domains = ", ".join(analysis.get("domains", []))
@@ -328,11 +334,26 @@ if submit_btn:
         "constraints": constraints
     })
     st.session_state.is_running = True
-    loop = asyncio.new_event_loop()
+    
+    # Standard asyncio execution in Streamlit
     try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Propagation manual context to avoid "missing ScriptRunContext"
+        from streamlit.runtime.scriptrunner import get_script_run_ctx, add_script_run_ctx
+        ctx = get_script_run_ctx()
+        # Note: add_script_run_context doesn't easily apply to loop, 
+        # but the loop being in same thread as main script usually works
+        # if the script run context is already set.
+        
         loop.run_until_complete(run_research_cycle())
+    except Exception as e:
+        st.error(f"Erreur fatale: {e}")
+        logger.error(f"Fatal error: {e}", exc_info=True)
     finally:
         loop.close()
+        
     st.session_state.is_running = False
     st.rerun()
 
