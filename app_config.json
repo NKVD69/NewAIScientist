@@ -5,5 +5,8 @@
   "constraints": "",
   "source_type": [
     "pubmed"
-  ]
+  ],
+  "num_hypotheses": 20,
+  "num_iterations": 10,
+  "max_papers": 100
 }
