@@ -6,7 +6,7 @@
   "source_type": [
     "pubmed"
   ],
-  "num_hypotheses": 20,
-  "num_iterations": 10,
-  "max_papers": 100
+  "num_hypotheses": 4,
+  "num_iterations": 2,
+  "max_papers": 8
 }
