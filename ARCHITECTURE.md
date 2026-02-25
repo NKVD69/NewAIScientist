@@ -441,31 +441,25 @@ Validation:
 └─ Data integrity verification
 ```
 
-## Future Extensions
+## Future Extensions & Roadmap
 
-### Multi-Modal Learning
-```
-├─ Process protein structures (AlphaFold)
-├─ Analyze molecular graphs
-├─ Incorporate experimental images
-└─ Multi-modality fusion
-```
+The following areas are identified for future development to expand the system's impact and scalability:
 
-### Reinforcement Learning Integration
-```
-├─ Learn optimal agent weighting
-├─ Optimize tournament structure
-├─ Improve review criteria
-└─ Refine evolution strategies
-```
+### 1. Multi-Modal Support
+*   **PDF Image/Figure Extraction**: Integrating computer vision to extract and reason over charts, biological diagrams, and molecular structures directly from PDF manuscripts to improve evidence grounding.
+*   **Molecular Graph Analysis**: Direct integration with chemical structure representations and protein structure models (e.g., AlphaFold).
 
-### Distributed Execution
-```
-├─ Multi-machine deployment
-├─ Distributed task queue
-├─ Federated agent networks
-└─ Scalable hypothesis storage
-```
+### 2. Distributed Processing
+*   **Scalable Task Execution**: Extending the `SupervisorAgent` to distribute agent tasks across multiple threads, processes, or networked machines.
+*   **High-Volume Literature Processing**: Enabling the system to ingest and analyze thousands of full-text papers for large-scale meta-analysis and cross-disciplinary discovery.
+
+### 3. Better Citation Tracking
+*   **Formal Citation Index**: Implementing a formal citation database and graph analysis to identify influential papers and track the evolution of scientific consensus.
+*   **Knowledge Graph Integration**: Building a persistent knowledge graph of entities (genes, drugs, pathways) and their relationships as cited in the literature.
+
+### 4. Extensible Agent Registry
+*   **Custom Domain Agents**: Providing a standardized interface to plug in domain-specific agents (e.g., a "ChemistryAgent" for safety/toxicity checks or a "PhysicsAgent" for physical law validation).
+*   **Collaborative Agent Framework**: Enabling federated networks of agents where different researchers can contribute specialized investigative modules.
 
 ---
 
