@@ -1,18 +1,18 @@
-# AI Co-Scientist : Système Multi-Agent pour la Découverte Scientifique (v2.0)
+# AI Co-Scientist : Système Multi-Agent pour la Découverte Scientifique (v2.1)
 
 Une implémentation du système **AI Co-Scientist**, inspirée par les travaux de **Sakana.ai** ("The AI Scientist") et le papier de **Google DeepMind** "Towards an AI co-scientist" (2025).
 
-> **Mise à jour Février 2026 (v2.0)** : Intégration d'un système **Agentic RAG** complet avec téléchargement de PDFs, indexation vectorielle locale (ChromaDB) et raffinement itératif des hypothèses.
+> **Mise à jour Février 2026 (v2.1)** : Introduction du modèle **Hybrid Context** (CAG + GraphRAG) et génération automatisée d'articles scientifiques détaillés au format PDF.
 
 ## 🎯 Vue d'ensemble
 
 Ce système est une architecture multi-agent conçue pour :
-- **Rechercher** et lire la littérature scientifique (RAG sur ArXiv avec analyse PDF complète).
-- **Générer** des hypothèses scientifiques novelles et fondées ("grounded").
+- **Rechercher** et lire la littérature scientifique (RAG sur ArXiv/PubMed avec analyse PDF).
+- **Générer** des hypothèses scientifiques fondées via un modèle de contexte hybride.
 - **Évaluer** la qualité, la nouveauté et la testabilité via un "Peer Review" simulé.
 - **Débattre** et **classer** les hypothèses via un tournoi (système Elo).
 - **Évoluer** les meilleures idées via des stratégies créatives assistées par LLM.
-- **Synthétiser** les résultats dans un rapport de méta-revue complet.
+- **Synthétiser** les résultats dans un rapport de méta-revue et un **article scientifique PDF**.
 
 ## 🏗️ Architecture & Agents
 
@@ -90,13 +90,17 @@ Utilisez la commande suivante pour lancer l'application Streamlit :
 
 ## 🧠 Fonctionnalités Avancées
 
-*   **Mode "Agentic RAG"** : Le système ne se contente pas de résumés. Il lit le contenu intégral des papiers pour trouver des détails méthodologiques ou des résultats spécifiques ignorés dans les abstracts.
-*   **Persistance** : Tous les résultats et l'index vectoriel sont sauvegardés localement. Vous pouvez fermer et relancer l'application sans perdre le contexte.
+*   **Modèle "Hybrid Context"** : Le système combine trois couches de connaissances :
+    *   **CAG (Context-Augmented Generation)** : Synthèse des découvertes clés de la littérature.
+    *   **GraphRAG** : Extraction d'entités et de relations pour un raisonnement structurel.
+    *   **Agentic RAG** : Recherche sémantique profonde dans le texte intégral des PDFs.
+*   **Génération d'Articles PDF** : Un script dédié (`generate_paper.py`) permet de transformer les résultats d'une session en un article scientifique structuré (Abstract, Architecture, Study Case, Future Directions).
+*   **Persistance** : Tous les résultats et l'index vectoriel sont sauvegardés localement.
 
 ## 📝 Auteurs & Références
 
 *   Basé sur le framework "AI Co-Scientist" de Google DeepMind (2025).
 *   Adapté et étendu avec une couche RAG locale pour une exécution autonome.
 
-**Version** : 2.0 (Février 2026)
-**Statut** : Stable
+**Version** : 2.1 (Février 2026)
+**Statut** : Stable & Étendu

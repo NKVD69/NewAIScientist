@@ -63,6 +63,27 @@ The AI Co-Scientist is a sophisticated multi-agent system designed to accelerate
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## 🧠 Hybrid Context & Knowledge Injection
+
+A key innovation of the v2.1 architecture is the **Hybrid Context** model, which ensures the Generation Agent has access to multiple levels of scientific knowledge simultaneously:
+
+### 1. Layers of Evidence
+| Context Layer | Agent Responsible | Content | Purpose |
+| :--- | :--- | :--- | :--- |
+| **CAG** | `LiteratureAgent` | Synthesized "Key Findings" | Global domain overview and grounding. |
+| **GraphRAG** | `GraphAgent` | Entity-Relation Triples | Structural reasoning and linkage discovery. |
+| **Agentic RAG**| `LiteratureAgent` | Semantic PDF Excerpts | Fine-grained evidential proof from full texts. |
+| **Context Memory**| `SupervisorAgent`| Match history & Ratings | Iterative refinement and self-correction. |
+
+### 2. Knowledge Flow Diagram
+```
+[ Literature Set ] ───► extract_key_findings() ───► (CAG) ──────┐
+       │                                                        │
+       ├──────────────► build_graph() ────────────► (GraphRAG) ─┤
+       │                                                        │ ──► [ GEN PROMPT ]
+       └──────────────► process_with_rag() ───────► (RAG) ──────┘
+```
+
 ## Data Flow
 
 ### Standard Workflow Iteration
@@ -137,9 +158,9 @@ START
    All Agents → Context Memory
    (State maintained across iterations)
 
-6. RAG RETRIEVAL (NEW)
-   Generation Agent ← Literature Agent (Vector DB)
-   (Semantic search for evidential context)
+6. HYBRID CONTEXT INJECTION (v2.1)
+   Literature/Graph Agents → Generation Agent
+   (CAG + GraphRAG + RAG excerpts injected into prompt)
 ```
 
 ## Task Queue System

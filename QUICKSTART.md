@@ -98,8 +98,8 @@ async def main():
     # Run complete workflow (includes literature search)
     await co_scientist.run_full_cycle(num_iterations=3)
     
-    # Export results
-    co_scientist.export_hypotheses_json("my_results.json")
+    # Export results for analysis and paper generation
+    co_scientist.export_hypotheses_json("co_scientist_results.json")
 
 asyncio.run(main())
 ```
@@ -198,6 +198,17 @@ async def mechanism_explanation():
     # Get comprehensive overview
     meta_review = await co_scientist.run_meta_review_cycle()
     print(meta_review['research_overview'])
+
+### Use Case 4: Scientific Paper Generation
+
+After running a workflow and exporting results to `co_scientist_results.json`, you can generate a professional PDF paper:
+
+```bash
+# Generate the scientific article PDF
+python generate_paper.py
+```
+
+This will create `ai_co_scientist_paper_detailed.pdf` in your root directory.
 ```
 
 ## 📊 Reading the Results
@@ -436,8 +447,8 @@ A: Minimal - most time is spent in simulated debates. With a local LLM, it depen
 
 ---
 
-**Version**: 1.0  
-**Last Updated**: January 2026  
-**Status**: Ready for use
+**Version**: 2.1  
+**Last Updated**: February 2026  
+**Status**: Ready for use (Hybrid Context + Paper Gen)
 
 Happy Researching! 🔬

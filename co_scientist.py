@@ -57,15 +57,60 @@ def _parse_json_response(content: str) -> Any:
         
     # Use regex to find the JSON block if still failing
     try:
-        # Look for the first '{' and last '}'
+        start = content.find('{')
+        end = content.rfind('}')
+        if start != -1 and end != -1:
+            return json.loads(content[start:end+1])
+            
         import re
         match = re.search(r'(\{.*\}|\[.*\])', content, re.DOTALL)
         if match:
             return json.loads(match.group(1))
-    except (json.JSONDecodeError, ImportError):
+    except (json.JSONDecodeError, ImportError, Exception):
         pass
         
-    return json.loads(content)  # Final attempt, will raise error if still invalid
+    raise json.JSONDecodeError("Could not find valid JSON", content, 0)
+
+_LLM_JSON_MODE_SUPPORTED = True
+
+async def _get_llm_completion(client, messages, temperature=0.7, json_mode=True):
+    """Robust wrapper for LLM completions with automatic format negotiation."""
+    global _LLM_JSON_MODE_SUPPORTED
+    model_name = config.get_llm_model_name()
+    
+    # If we know json_mode isn't supported globally, force it off
+    if not _LLM_JSON_MODE_SUPPORTED:
+        json_mode = False
+        
+    try:
+        kwargs = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": temperature
+        }
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        
+        return await asyncio.to_thread(client.chat.completions.create, **kwargs)
+    except Exception as e:
+        error_str = str(e).lower()
+        if json_mode and ("response_format" in error_str or "json_object" in error_str) and ("400" in str(e) or "invalid" in error_str):
+            print(f"⚠ LLM reports json_object mode not supported. Switching globally to text mode. (Error: {e})")
+            _LLM_JSON_MODE_SUPPORTED = False
+            # Retry in text mode
+            kwargs.pop("response_format", None)
+            return await asyncio.to_thread(client.chat.completions.create, **kwargs)
+        raise e
+
+def _ensure_str(value: Any) -> str:
+    """Ensure a value is a string, joining lists if necessary."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return " ".join([str(item) for item in value])
+    return str(value)
 
 # Attempt to import openai, but don't fail if not installed
 try:
@@ -232,20 +277,11 @@ class LiteratureAgent:
         Queries should use keywords and boolean operators (AND, OR). Keep them concise.
         """
         try:
-            try:
-                response = await asyncio.to_thread(
-                    self.llm_client.chat.completions.create,
-                    model=config.get_llm_model_name(),
-                    messages=[{"role": "user", "content": prompt}],
-                    response_format={"type": "json_object"}
-                )
-            except Exception:
-                # Fallback to text mode if JSON format not supported
-                response = await asyncio.to_thread(
-                    self.llm_client.chat.completions.create,
-                    model=config.get_llm_model_name(),
-                    messages=[{"role": "user", "content": prompt}],
-                )
+            response = await _get_llm_completion(
+                self.llm_client,
+                messages=[{"role": "user", "content": prompt}],
+                json_mode=True
+            )
             data = _parse_json_response(response.choices[0].message.content)
             return data.get("queries", [goal.title])
         except Exception as e:
@@ -272,11 +308,11 @@ class LiteratureAgent:
         """
         
         try:
-            response = await asyncio.to_thread(
-                self.llm_client.chat.completions.create,
-                model=config.get_llm_model_name(),
+            response = await _get_llm_completion(
+                self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
+                json_mode=False # This is not expected to be JSON
             )
             content = response.choices[0].message.content.strip().replace('"', '')
             # Ensure we don't return a huge explanation if LLM ignores instructions
@@ -569,19 +605,15 @@ class GraphAgent:
         """
         
         try:
-            response = await asyncio.to_thread(
-                self.llm_client.chat.completions.create,
-                model=config.get_llm_model_name(),
+            response = await _get_llm_completion(
+                self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                # response_format={"type": "json_object"} # Often causes 400 with some models, better parse manually
+                json_mode=True
             )
             content = response.choices[0].message.content.strip()
-            # Clean markdown
-            if content.startswith("```json"): content = content[7:]
-            if content.endswith("```"): content = content[:-3]
             
-            triples = json.loads(content.strip())
+            triples = _parse_json_response(content)
             
             # Build graph
             self.graph = {}
@@ -681,24 +713,12 @@ class GenerationAgent:
         """
         
         try:
-            # Try with JSON mode first
-            try:
-                response = await asyncio.to_thread(
-                    self.llm_client.chat.completions.create,
-                    model=config.get_llm_model_name(),
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.3,
-                    response_format={"type": "json_object"},
-                )
-            except Exception:
-                # Fallback to text mode if JSON mode fails (e.g. 400 Bad Request)
-                response = await asyncio.to_thread(
-                    self.llm_client.chat.completions.create,
-                    model=config.get_llm_model_name(),
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.3,
-                )
-
+            response = await _get_llm_completion(
+                self.llm_client,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                json_mode=True
+            )
             content = response.choices[0].message.content.strip()
             
             # Robust parsing: remove markdown code blocks
@@ -710,10 +730,10 @@ class GenerationAgent:
             data = json.loads(content)
             
             # Update draft with refined content
-            draft.title = data.get("title", draft.title)
-            draft.description = data.get("description", draft.description)
-            draft.reasoning = data.get("reasoning", draft.reasoning)
-            draft.mechanism = data.get("mechanism", draft.mechanism)
+            draft.title = _ensure_str(data.get("title", draft.title))
+            draft.description = _ensure_str(data.get("description", draft.description))
+            draft.reasoning = _ensure_str(data.get("reasoning", draft.reasoning))
+            draft.mechanism = _ensure_str(data.get("mechanism", draft.mechanism))
             draft.testable_predictions = data.get("testable_predictions", draft.testable_predictions)
             draft.limitations = data.get("limitations", draft.limitations)
             
@@ -789,23 +809,15 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
         model_name = config.get_llm_model_name()
         
         try:
-            # First attempt with json_object format
-            response = await asyncio.to_thread(
-                self.llm_client.chat.completions.create,
-                model=model_name,
+            response = await _get_llm_completion(
+                self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
-                response_format={"type": "json_object"},
+                json_mode=True
             )
         except Exception as e:
-            # If json_object is not supported (e.g. 400 Error), retry without it
-            print(f"⚠ JSON mode failed, retrying with standard text mode: {e}")
-            response = await asyncio.to_thread(
-                self.llm_client.chat.completions.create,
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-            )
+            print(f"⚠ LLM generation failed: {e}")
+            return []
         
         content = response.choices[0].message.content
         
@@ -842,10 +854,10 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
                         grounding = [f"Supported by: {p['title']}" for p in context_papers[:2]]
                 
                 hypotheses.append(Hypothesis(
-                    title=item.get("title", ""),
-                    description=item.get("description", ""),
-                    reasoning=item.get("reasoning", ""),
-                    mechanism=item.get("mechanism", ""),
+                    title=_ensure_str(item.get("title", "")),
+                    description=_ensure_str(item.get("description", "")),
+                    reasoning=_ensure_str(item.get("reasoning", "")),
+                    mechanism=_ensure_str(item.get("mechanism", "")),
                     testable_predictions=item.get("testable_predictions", []),
                     grounding_evidence=grounding,
                     limitations=item.get("limitations", []),
@@ -1011,21 +1023,15 @@ class ReflectionAgent:
         model_name = config.get_llm_model_name()
         
         try:
-            response = await asyncio.to_thread(
-                self.llm_client.chat.completions.create,
-                model=model_name,
+            response = await _get_llm_completion(
+                self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                response_format={"type": "json_object"},
+                json_mode=True
             )
-        except Exception:
-            # Fallback to text mode if JSON format not supported
-            response = await asyncio.to_thread(
-                self.llm_client.chat.completions.create,
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-            )
+        except Exception as e:
+            print(f"⚠ LLM review API call failed: {e}")
+            raise e
         
         data = _parse_json_response(response.choices[0].message.content)
         
@@ -1359,8 +1365,11 @@ class ProximityAgent:
         similarity = 0.0
         
         # Text similarity (simple approach: shared words in mechanism)
-        mech_a_words = set(hyp_a.mechanism.lower().split())
-        mech_b_words = set(hyp_b.mechanism.lower().split())
+        mech_a = _ensure_str(hyp_a.mechanism).lower()
+        mech_b = _ensure_str(hyp_b.mechanism).lower()
+        
+        mech_a_words = set(mech_a.split())
+        mech_b_words = set(mech_b.split())
         
         if mech_a_words and mech_b_words:
             shared = len(mech_a_words & mech_b_words)
@@ -1512,26 +1521,17 @@ Provide an improved version as a JSON object with keys: "title", "description", 
 Output ONLY the JSON object.
 """
         try:
-            try:
-                response = await asyncio.to_thread(
-                    self.llm_client.chat.completions.create,
-                    model=config.get_llm_model_name(),
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.5,
-                    response_format={"type": "json_object"},
-                )
-            except Exception:
-                response = await asyncio.to_thread(
-                    self.llm_client.chat.completions.create,
-                    model=config.get_llm_model_name(),
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.5,
-                )
+            response = await _get_llm_completion(
+                self.llm_client,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                json_mode=True
+            )
             
             data = _parse_json_response(response.choices[0].message.content)
-            new_hyp.title = data.get("title", new_hyp.title)
-            new_hyp.description = data.get("description", new_hyp.description)
-            new_hyp.mechanism = data.get("mechanism", new_hyp.mechanism)
+            new_hyp.title = _ensure_str(data.get("title", new_hyp.title))
+            new_hyp.description = _ensure_str(data.get("description", new_hyp.description))
+            new_hyp.mechanism = _ensure_str(data.get("mechanism", new_hyp.mechanism))
             new_hyp.testable_predictions = data.get("testable_predictions", new_hyp.testable_predictions)
             new_hyp.limitations = data.get("limitations", new_hyp.limitations)
             new_hyp.generation_method = "evolved-llm"
