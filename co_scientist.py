@@ -11,6 +11,7 @@ This implementation includes:
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -410,7 +411,46 @@ class LiteratureAgent:
         if not papers:
             return "No papers available for context."
             
-        context_str = "## Key Findings from Literature (CAG Context)\n\n"
+        # Advanced Phase 2 CAG Synthesis
+        if self.rag_engine and self.llm_client and goal:
+            print("   🧠 Synthesizing Semantic CAG Report from vector chunks...")
+            rag_query = f"{goal.title} {goal.description}"
+            chunks = await self.rag_engine.query(rag_query, top_k=8)
+            
+            if chunks:
+                formatted_chunks = ""
+                for i, chunk in enumerate(chunks):
+                    formatted_chunks += f"Source: {chunk['paper_title']}\nExcerpt: {chunk['text']}\n\n"
+                    
+                prompt = f"""
+                You are a senior scientific analyst formulating a Domain Context Report.
+                Synthesize the following literature excerpts into a cohesive "Global Background Report".
+                Focus heavily on mechanisms, known pathways, limitations, and key findings relevant to this goal:
+                
+                Goal: {goal.title}
+                Domain: {goal.domain}
+                
+                Excerpts:
+                {formatted_chunks}
+                
+                Write a comprehensive, insightful synthesis in Markdown. Do not just list the abstracts. Extract true cross-paper insights.
+                """
+                
+                try:
+                    response = await _get_llm_completion(
+                        self.llm_client,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.3,
+                        json_mode=False
+                    )
+                    synthesis = response.choices[0].message.content.strip()
+                    if synthesis:
+                        return f"## Semantic CAG Synthesis\n\n{synthesis}\n\n"
+                except Exception as e:
+                    print(f"   ⚠ Semantic CAG Synthesis failed: {e}. Falling back to abstract list.")
+            
+        # Fallback to abstract concatenation (Legacy CAG)
+        context_str = "## Key Findings from Literature (Abstracts)\n\n"
         domain = goal.domain if goal else "domain"
         
         for i, paper in enumerate(papers[:10]): # Limit to top 10 for context window efficiency
@@ -548,11 +588,63 @@ class LiteratureAgent:
         return chunks_indexed
     
     async def query_rag(self, query: str, top_k: int = 5) -> List[Dict]:
-        """Query RAG system for relevant paper chunks"""
+        """Query RAG system for relevant paper chunks, with LLM Semantic Reranking"""
         if not self.rag_engine:
             return []
         
-        return await self.rag_engine.query(query, top_k)
+        # Fetch 3x more chunks for the candidate pool
+        initial_k = top_k * 3
+        chunks = await self.rag_engine.query(query, initial_k)
+        
+        if not chunks or not self.llm_client:
+            return chunks[:top_k]
+            
+        print(f"      🧠 Reranking {len(chunks)} chunks with LLM to find top {top_k}...")
+        
+        # Build prompt for LLM as a judge
+        formatted_chunks = ""
+        for i, chunk in enumerate(chunks):
+            formatted_chunks += f"--- Chunk {i} ---\nPaper: {chunk['paper_title']}\nText: {chunk['text'][:800]}...\n\n"
+            
+        prompt = f"""
+        You are an expert scientific evaluator. Rate the relevance of the following text chunks to the query: "{query}"
+        
+        {formatted_chunks}
+        
+        Output a JSON object with a list of indices of the most relevant chunks, ordered from most to least relevant (max {top_k}).
+        Example: {{ "relevant_chunks": [3, 0, 4, 1, 2] }}
+        """
+        
+        try:
+            response = await _get_llm_completion(
+                self.llm_client,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                json_mode=True
+            )
+            data = _parse_json_response(response.choices[0].message.content)
+            indices = data.get("relevant_chunks", [])
+            
+            # Filter and order
+            reranked = []
+            seen = set()
+            for idx in indices:
+                if isinstance(idx, int) and 0 <= idx < len(chunks) and idx not in seen:
+                    reranked.append(chunks[idx])
+                    seen.add(idx)
+                    
+            # Fallback if LLM failed to return enough unique valid indices
+            for i, chunk in enumerate(chunks):
+                if len(reranked) >= top_k: break
+                if i not in seen:
+                    reranked.append(chunk)
+                    seen.add(i)
+                    
+            return reranked[:top_k]
+            
+        except Exception as e:
+            print(f"      ⚠ Reranking failed: {e}. Falling back to default ordering.")
+            return chunks[:top_k]
     
     def get_rag_stats(self) -> Dict:
         """Get RAG system statistics"""
@@ -629,11 +721,55 @@ class GraphAgent:
             for entity in sorted_entities[:5]:
                 summary += f"- **{entity}**: {', '.join(self.graph[entity][:3])}\n"
                 
+            # Phase 3: Cross-Domain Link Synthesis
+            cross_domain_insight = await self._synthesize_cross_domain_links(goal)
+            if cross_domain_insight:
+                summary += f"\n### 🌉 Cross-Domain Synthesis\n{cross_domain_insight}\n"
+                
             return summary
             
         except Exception as e:
             print(f"⚠ Graph construction failed: {e}")
             return "Graph construction failed."
+
+    async def _synthesize_cross_domain_links(self, goal: ResearchGoal) -> str:
+        """Analyze the current graph to propose a novel link bridging disconnected domains."""
+        if not self.llm_client or not self.graph or len(self.graph) < 3:
+            return ""
+            
+        print("   🌉 Synthesizing Cross-Domain Links...")
+        
+        # Represent graph as text
+        graph_text = ""
+        for subj, links in list(self.graph.items())[:10]:
+            graph_text += f"{subj}: {', '.join(links)}\n"
+            
+        prompt = f"""
+        You are an AI specialized in revealing hidden cross-domain insights.
+        Analyze the following extracted knowledge graph representing the current literature:
+        
+        {graph_text}
+        
+        Goal: {goal.title if goal else "Unknown"}
+        
+        Identify two entities that are currently unconnected in this graph but, if linked by a novel hypothetical mechanism, could lead to a breakthrough. 
+        Describe this single, highly specific "bridging" mechanism in one concise paragraph.
+        Return ONLY a JSON object with this format:
+        {{"bridging_insight": "Your concise paragraph..."}}
+        """
+        
+        try:
+            response = await _get_llm_completion(
+                self.llm_client,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.6,
+                json_mode=True
+            )
+            data = _parse_json_response(response.choices[0].message.content)
+            return data.get("bridging_insight", "")
+        except Exception as e:
+            print(f"   ⚠ Cross-domain synthesis failed: {e}")
+            return ""
 
 class GenerationAgent:
     """Generates initial hypotheses and explores research space"""
@@ -749,8 +885,8 @@ class GenerationAgent:
         if context_papers:
             literature_context = "\n**Relevant Literature Context:**\n"
             for i, paper in enumerate(context_papers, 1):
-                # Improvement: Increased context limit from 200 to 800 chars to capture methodology/results
-                literature_context += f"{i}. {paper['title']} ({paper['published']}): {paper['summary'][:800]}...\n"
+                paper_id = hashlib.md5(paper.get('url', str(i)).encode()).hexdigest()[:8]
+                literature_context += f"[{paper_id}] {paper['title']} ({paper.get('published', 'N/A')}): {paper.get('summary', '')[:800]}...\n"
         
         # Add RAG context if available (full-text chunks)
         rag_context_text = ""
@@ -758,8 +894,9 @@ class GenerationAgent:
             rag_context_text = "\n**Deep Literature Analysis (RAG):**\n"
             rag_context_text += "The following are the most relevant passages from full papers on this topic:\n\n"
             for i, chunk in enumerate(rag_context, 1):
-                rag_context_text += f"Excerpt {i} from '{chunk['paper_title']}':\n"
-                rag_context_text += f"{chunk['text'][:1000]}...\n\n"
+                chunk_id = chunk.get('paper_id', str(i))[:8]
+                rag_context_text += f"Excerpt {i} from '[{chunk_id}] {chunk.get('paper_title', 'Unknown')}':\n"
+                rag_context_text += f"{chunk.get('text', '')[:1000]}...\n\n"
         
         # CAG: Inject Key Findings if available (Hybrid Context)
         key_findings = ""
@@ -795,7 +932,8 @@ Veuillez générer {count} hypothèses distinctes. Pour chaque hypothèse, fourn
   "reasoning": "Détaillez le raisonnement logique et les données bibliographiques spécifiques qui ont permis de formuler cette hypothèse. Expliquez la connexion entre les preuves existantes et l'idée nouvelle.",
   "mechanism": "Décrivez précisément le mécanisme biochimique ou physique proposé. Comment les différentes composantes interagissent-elles ?",
   "testable_predictions": ["Liste de prédictions techniques et quantifiables.", "Prédiction 2", "..."],
-  "grounding_evidence": ["Références précises (Auteurs, Année) ou principes physiques fondamentaux.", "Preuve 2", "..."],
+  "cited_papers": ["Liste STRICte des identifiants des articles (ex: '[a1b2c3d4]', '[e5f6g7h8]') trouvés dans le contexte. N'inventez pas d'identifiants.", "..."],
+  "grounding_evidence": ["Références précises issues du contexte ou principes physiques fondamentaux.", "Preuve 2", "..."],
   "limitations": ["Analyse critique des failles potentielles de l'hypothèse.", "Limitation 2", "..."]
 }}
 
@@ -842,16 +980,26 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
 
             hypotheses = []
             for item in hypotheses_data:
-                # Force citation of context papers if LLM missed them
-                cited = item.get("cited_papers", [])
-                grounding = item.get("grounding_evidence", [])
+                # Retrieve parsed citations (IDs)
+                cited_ids = item.get("cited_papers", [])
                 
-                if context_papers and not cited:
-                    # Heuristic: Add top 2 papers as citations if none provided
-                    cited = [f"{p['title']} ({p['published']})" for p in context_papers[:2]]
-                    # Also add to grounding evidence if empty
-                    if not grounding:
-                        grounding = [f"Supported by: {p['title']}" for p in context_papers[:2]]
+                # Reverse mapping: Find actual titles from context papers based on IDs
+                cited_titles = []
+                for cited_id in cited_ids:
+                    clean_id = cited_id.strip("[]")
+                    for p in context_papers:
+                        p_id = hashlib.md5(p.get('url', '').encode()).hexdigest()[:8]
+                        if clean_id == p_id:
+                            cited_titles.append(f"{p['title']} ({p.get('published', '')})")
+                            break
+                            
+                # Fallback if ID matching failed or list was empty
+                if not cited_titles and context_papers:
+                    cited_titles = [f"{p['title']} ({p.get('published', '')})" for p in context_papers[:2]]
+                
+                grounding = item.get("grounding_evidence", [])
+                if not grounding and cited_titles:
+                    grounding = [f"Supported by: {t}" for t in cited_titles[:2]]
                 
                 hypotheses.append(Hypothesis(
                     title=_ensure_str(item.get("title", "")),
@@ -861,7 +1009,7 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
                     testable_predictions=item.get("testable_predictions", []),
                     grounding_evidence=grounding,
                     limitations=item.get("limitations", []),
-                    cited_papers=cited,
+                    cited_papers=cited_titles,
                     generation_method="llm-generated"
                 ))
             return hypotheses
@@ -1492,33 +1640,46 @@ class EvolutionAgent:
         
         new_hyp.title = f"Divergent: {original.title}"
         new_hyp.description = (
-            f"Exploring alternative mechanistic pathway divergent from: {original.title}. "
-            f"Considers underexplored or unconventional mechanisms."
+            f"Exploring lateral connections and unorthodox pathways inspired by: {original.title}. "
+            f"This hypothesis aggressively seeks to bridge disconnected domains."
         )
         
         new_hyp.mechanism = (
-            "Alternative mechanism: Rather than the primary hypothesis, "
-            "this explores secondary or tertiary pathways that may contribute "
-            "to the observed phenomenon."
+            "Divergent mechanism: Re-evaluating the core assumptions. Applying principles from "
+            "far-field disciplines (e.g., astrophysics, ecology, computer science) to the target domain."
         )
         
         return new_hyp
 
     async def _llm_refine_evolution(self, new_hyp: Hypothesis, original: Hypothesis, strategy: str) -> Hypothesis:
         """Use LLM to refine evolved hypothesis"""
-        prompt = f"""You are a scientific research assistant. Improve the following hypothesis using the "{strategy}" strategy.
+        
+        if strategy == "out_of_box":
+            system_prompt = "You are a visionary scientist specializing in 'lateral thinking'. Your task is to force a radical, cross-disciplinary jump."
+            task_instruction = (
+                "Completely ignore the dominant paradigm of the Original Hypothesis. "
+                "Find a mechanism from a totally unrelated scientific field (e.g., astrophysics, ecology, quantum mechanics, computer networks) "
+                "and boldly apply it to this problem. The result must be highly imaginative but theoretically testable."
+            )
+        else:
+            system_prompt = "You are a meticulous scientific research assistant."
+            task_instruction = f"Improve the following hypothesis using the '{strategy}' strategy. Ground it in realistic pathways."
+            
+        prompt = f"""{system_prompt}
+        
+{task_instruction}
 
 Original Hypothesis:
 - Title: {original.title}
 - Mechanism: {original.mechanism}
 - Description: {original.description}
 
-Current Evolution:
+Current Evolution Draft:
 - Title: {new_hyp.title}
 - Mechanism: {new_hyp.mechanism}
 
-Provide an improved version as a JSON object with keys: "title", "description", "mechanism", "testable_predictions" (list), "limitations" (list).
-Output ONLY the JSON object.
+Provide an improved version as a JSON object with keys: "title", "description", "mechanism", "testable_predictions" (list of strings), "limitations" (list of strings).
+Output ONLY the JSON object. Do not include markdown formatting or explanations.
 """
         try:
             response = await _get_llm_completion(

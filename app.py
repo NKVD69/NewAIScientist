@@ -3,6 +3,7 @@ import asyncio
 import pandas as pd
 import json
 import os
+import sys
 import logging
 from datetime import datetime
 import plotly.express as px
@@ -379,7 +380,7 @@ if st.session_state.results:
     m4.metric("Meilleur Elo", f"{top_hyp.elo_rating:.0f}")
 
     # --- ONGLETS D'ANALYSE ---
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏆 Classement & Détails", "📚 Littérature", "📊 Analyses Graphiques", "📝 Meta-Review", "💾 Export"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🏆 Classement", "📚 Littérature", "🕸️ Knowledge Graph", "📊 Métriques", "📝 Meta-Review", "💾 Export"])
     
     with tab1:
         st.subheader("Classement des Hypothèses")
@@ -397,8 +398,8 @@ if st.session_state.results:
             })
         df = pd.DataFrame(data).sort_values("Elo", ascending=False)
         
-        # Affichage interactif
-        st.dataframe(
+        # Affichage interactif avec Edition
+        edited_df = st.data_editor(
             df,
             column_config={
                 "Elo": st.column_config.ProgressColumn(
@@ -413,7 +414,8 @@ if st.session_state.results:
                 ),
             },
             hide_index=True,
-            use_container_width=True
+            use_container_width=True,
+            disabled=["ID", "Elo", "Status", "Reviews", "Titre", "Nouveauté"] # Read-only for now to avoid state mismatch
         )
         
         st.subheader("Détails des Hypothèses")
@@ -428,8 +430,8 @@ if st.session_state.results:
                     <h3>{h.title}</h3>
                     <p style="color: #6c757d; font-style: italic; margin-bottom: 15px;">{h.description}</p>
                     <div style="background-color: rgba(66, 133, 244, 0.1); padding: 10px; border-radius: 5px; margin-bottom: 15px;">
-                        <strong>🧠 Raisonnement & Formulation:</strong><br>
-                        {h.reasoning if h.reasoning else "Données non disponibles pour cette version."}
+                        <strong>🧠 Raisonnement & Formulation (Divergence Phase 3):</strong><br>
+                        {h.reasoning if h.reasoning else "Généré via la méthode : " + h.generation_method}
                     </div>
                     <p><strong>⚙️ Mécanisme Scientifique:</strong><br>{h.mechanism}</p>
                 </div>
@@ -445,7 +447,7 @@ if st.session_state.results:
                         st.info("Aucune prédiction générée.")
                 
                 with c2:
-                    st.markdown("#### 📚 Preuves & Sources")
+                    st.markdown("#### 📚 Preuves & Sources (Citation Tracking)")
                     # Affichage combiné des preuves et des papiers cités
                     if h.grounding_evidence:
                         for g in h.grounding_evidence:
@@ -454,7 +456,7 @@ if st.session_state.results:
                         st.info("Aucune preuve spécifique générée.")
                         
                     if h.cited_papers:
-                        st.markdown("**Références:**")
+                        st.markdown("**Références Scientifiques Strictes:**")
                         for p in h.cited_papers:
                             st.markdown(f"- *{p}*")
                 
@@ -483,13 +485,26 @@ if st.session_state.results:
                     <h4><a href="{p['url']}" target="_blank" style="color: #60a5fa; text-decoration: none;">{p['title']}</a></h4>
                     <p style="font-size: 0.9em; color: #cbd5e1;">📅 {p['published']} | ✍️ {', '.join(p['authors'][:3])}...</p>
                     <p style="font-size: 0.95em;">{p['summary']}</p>
-                    <p style="font-size: 0.8em; color: #94a3b8;">Source: {p.get('source', 'Unknown')}</p>
+                    <p style="font-size: 0.8em; color: #94a3b8;">Source: {p.get('source', 'Unknown')} | RAG ID: {hashlib.md5(p.get('url', '').encode()).hexdigest()[:8] if hasattr(hashlib, 'md5') else 'N/A'}</p>
                 </div>
                 """, unsafe_allow_html=True)
         else:
             st.info("Aucun papier trouvé ou recherche désactivée.")
 
     with tab3:
+        st.subheader("🕸️ Graphe de Connaissances Extrait (GraphRAG)")
+        st.markdown("Extraction automatique des relations inter-entités pour découvrir des mécanismes croisés.")
+        if hasattr(cs, 'graph_agent') and hasattr(cs.graph_agent, 'graph') and cs.graph_agent.graph:
+            graph_data = []
+            for subj, relations in cs.graph_agent.graph.items():
+                for rel in relations:
+                    graph_data.append({"Sujet (Entité)": subj, "Relation -> Objet": rel})
+            
+            st.dataframe(pd.DataFrame(graph_data).head(100), use_container_width=True)
+        else:
+            st.info("Le graphe de connaissances n'est pas disponible pour cette session.")
+
+    with tab4:
         st.subheader("Distribution des Scores Elo")
         fig = px.bar(df, x='Titre', y='Elo', color='Nouveauté', 
                      title="Classement Elo par Nouveauté",
@@ -516,7 +531,7 @@ if st.session_state.results:
         else:
             st.info("Pas assez de données de revue pour le graphique.")
 
-    with tab4:
+    with tab5:
         st.subheader("Synthèse de Recherche (Meta-Review)")
         # Récupérer la dernière meta-review si disponible (c'est un dict retourné par la fonction, mais pas stocké directement dans context_memory de manière simple dans le code original, on va simuler un appel ou le récupérer si on l'avait stocké. 
         # Pour l'instant, on va régénérer une vue rapide ou afficher l'overview)
@@ -545,7 +560,7 @@ if st.session_state.results:
                 except Exception as e:
                     st.error(f"Une erreur est survenue lors de la génération : {e}")
 
-    with tab5:
+    with tab6:
         st.subheader("Exporter les données")
         
         # Préparation du JSON
@@ -556,8 +571,29 @@ if st.session_state.results:
         }, indent=2, default=str)
         
         st.download_button(
-            label="📥 Télécharger le rapport JSON",
+            label="📥 Télécharger le rapport brut JSON",
             data=json_str,
             file_name="co_scientist_results.json",
             mime="application/json"
         )
+        
+        st.divider()
+        st.subheader("📄 Génération de l'Article Scientifique (Phase 6)")
+        st.markdown("Rédigez un article formel PDF incluant les hypothèses, les graphes de connaissances (GraphRAG) et les réflexions générées par l'IA.")
+        
+        if st.button("Générer l'Article Scientifique Complet (PDF)", type="primary"):
+            with st.spinner("Rédaction et compilation pdflatex en cours... (Patientez, cela nécessite plusieurs appels LLM)"):
+                try:
+                    import subprocess
+                    result = subprocess.run([sys.executable, "generate_paper.py"], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        st.success("✅ Article généré avec succès ! (ai_co_scientist_paper_detailed.pdf)")
+                        # Offer download
+                        pdf_path = "ai_co_scientist_paper_detailed.pdf"
+                        if os.path.exists(pdf_path):
+                            with open(pdf_path, "rb") as f:
+                                st.download_button("📥 Télécharger le PDF Final", f, file_name="ai_co_scientist_paper_detailed.pdf", mime="application/pdf")
+                    else:
+                        st.error(f"❌ Erreur de génération: {result.stderr}")
+                except Exception as e:
+                    st.error(f"❌ Impossible de lancer la génération: {e}")
