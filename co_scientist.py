@@ -52,19 +52,24 @@ def _parse_json_response(content: str) -> Any:
         
     # Remove markdown code fences if present
     if "```json" in content:
-        content = content.split("```json")[1].split("```")[0].strip()
+        parts = content.split("```json")
+        if len(parts) > 1:
+            content = parts[1].split("```")[0].strip()
     elif "```" in content:
-        content = content.split("```")[1].split("```")[0].strip()
+        parts = content.split("```")
+        if len(parts) > 1:
+            content = parts[1].split("```")[0].strip()
+            
+    # Try direct parse after stripping markdown
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
         
     # Use regex to find the JSON block if still failing
     try:
-        start = content.find('{')
-        end = content.rfind('}')
-        if start != -1 and end != -1:
-            return json.loads(content[start:end+1])
-            
         import re
-        match = re.search(r'(\{.*\}|\[.*\])', content, re.DOTALL)
+        match = re.search(r'(\[.*\]|\{.*\})', content, re.DOTALL)
         if match:
             return json.loads(match.group(1))
     except (json.JSONDecodeError, ImportError, Exception):

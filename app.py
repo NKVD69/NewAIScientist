@@ -256,7 +256,7 @@ with st.expander("🎯 Définir l'Objectif de Recherche", expanded=not st.sessio
                              key="persist_constraints")
     
     st.markdown("---")
-    submit_btn = st.button("Lancer la Recherche", type="primary", use_container_width=True)
+    submit_btn = st.button("Lancer la Recherche", type="primary", width="stretch")
 
 # --- LOGIQUE D'EXECUTION ---
 async def run_research_cycle():
@@ -415,7 +415,7 @@ if st.session_state.results:
                 ),
             },
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             disabled=["ID", "Elo", "Status", "Reviews", "Titre", "Nouveauté"] # Read-only for now to avoid state mismatch
         )
         
@@ -501,7 +501,7 @@ if st.session_state.results:
                 for rel in relations:
                     graph_data.append({"Sujet (Entité)": subj, "Relation -> Objet": rel})
             
-            st.dataframe(pd.DataFrame(graph_data).head(100), use_container_width=True)
+            st.dataframe(pd.DataFrame(graph_data).head(100), width="stretch")
         else:
             st.info("Le graphe de connaissances n'est pas disponible pour cette session.")
 
@@ -510,7 +510,7 @@ if st.session_state.results:
         fig = px.bar(df, x='Titre', y='Elo', color='Nouveauté', 
                      title="Classement Elo par Nouveauté",
                      color_discrete_map={'low': '#94a3b8', 'medium': '#60a5fa', 'high': '#3b82f6', 'very_high': '#8b5cf6'})
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         
         st.subheader("Relation Qualité vs Nouveauté")
         # Préparer données pour scatter plot
@@ -528,7 +528,7 @@ if st.session_state.results:
             df_scatter = pd.DataFrame(scatter_data)
             fig2 = px.scatter(df_scatter, x="Novelty Score", y="Quality", size="Elo", hover_name="Titre",
                               title="Qualité vs Nouveauté (Taille = Elo)")
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
         else:
             st.info("Pas assez de données de revue pour le graphique.")
 
