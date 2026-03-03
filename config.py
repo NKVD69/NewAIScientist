@@ -16,6 +16,7 @@ DEFAULT_LLM_BASE_URL = "http://127.0.0.1:1234/v1"
 DEFAULT_LLM_MODEL_NAME = "openai/gpt-oss-20b"
 DEFAULT_LLM_API_KEY = "lm-studio"
 DEFAULT_ENTREZ_EMAIL = "ai-scientist@example.com"
+DEFAULT_NCBI_API_KEY = ""
 
 
 def get_llm_base_url() -> str:
@@ -36,6 +37,11 @@ def get_llm_api_key() -> str:
 def get_entrez_email() -> str:
     """Get the Entrez email for NCBI API access."""
     return os.environ.get("ENTREZ_EMAIL", DEFAULT_ENTREZ_EMAIL)
+
+
+def get_ncbi_api_key() -> str:
+    """Get the NCBI API key from environment."""
+    return os.environ.get("NCBI_API_KEY", DEFAULT_NCBI_API_KEY)
 
 
 def get_openai_client():

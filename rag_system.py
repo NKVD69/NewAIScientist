@@ -160,33 +160,54 @@ class PDFDownloader:
             print(f"ℹ No PMCID found for PMID {pmid} (Paper may not be Open Access)")
             return None
             
-        # Construct PMC PDF URL
-        # URL format: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC<ID>/pdf/
-        # Note: API returns ID without PMC prefix usually, but let's check.
-        # Entrez returns standard ID (digits).
-        
-        pdf_url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmcid}/pdf/"
+        # Construct PMC XML download using Entrez
+        clean_pmcid = pmcid.replace("PMC", "")
+        cache_path = self.cache_dir / f"pmc_{clean_pmcid}.txt"
         
         try:
-           cache_path = self._get_cache_path(pdf_url)
-           
            if cache_path.exists():
                return cache_path
                
-           # Download with User-Agent
            def download():
-               req = urllib.request.Request(
-                   pdf_url, 
-                   headers={'User-Agent': 'AI-CoScientist/1.0 (mailto:ai-scientist@example.com)'}
-               )
-               with urllib.request.urlopen(req) as response, open(cache_path, 'wb') as out_file:
-                   out_file.write(response.read())
+               handle = Entrez.efetch(db="pmc", id=clean_pmcid, retmode="xml")
+               record = handle.read()
+               handle.close()
+               
+               import xml.etree.ElementTree as ET
+               try:
+                   root = ET.fromstring(record)
+                   paragraphs = []
+                   for p in root.iter('p'):
+                       text = "".join(p.itertext()).strip()
+                       if text:
+                           paragraphs.append(text)
+                           
+                   text_content = "\n\n".join(paragraphs)
                    
-           await asyncio.to_thread(download)
-           return cache_path
+                   # Fallback to abstract
+                   if not text_content.strip():
+                       for abstract in root.iter('abstract'):
+                           text = "".join(abstract.itertext()).strip()
+                           if text:
+                               paragraphs.append(text)
+                       text_content = "\n\n".join(paragraphs)
+                       
+                   if not text_content.strip():
+                       print(f"ℹ No text content found in XML for {pmid}")
+                       return None
+                       
+                   with open(cache_path, 'w', encoding='utf-8') as out_file:
+                       out_file.write(text_content)
+                       
+                   return cache_path
+               except Exception as e:
+                   print(f"⚠ Failed to parse PMC XML for {pmid}: {e}")
+                   return None
+                   
+           return await asyncio.to_thread(download)
            
         except Exception as e:
-            print(f"⚠ Failed to download PMC PDF for {pmid}: {e}")
+            print(f"⚠ Failed to download PMC text for {pmid}: {e}")
             return None
     
     async def download_paper(self, paper: Dict) -> Optional[Path]:
@@ -209,24 +230,34 @@ class DocumentProcessor:
         if not pypdf:
             print("⚠ pypdf not installed. PDF processing disabled.")
     
-    async def extract_text(self, pdf_path: Path) -> Optional[str]:
-        """Extract all text from PDF"""
-        if not pypdf:
-            return None
-        
+    async def extract_text(self, file_path: Path) -> Optional[str]:
+        """Extract all text from PDF or TXT"""
         try:
-            def extract():
-                reader = pypdf.PdfReader(str(pdf_path))
-                text_parts = []
-                for page in reader.pages:
-                    text_parts.append(page.extract_text())
-                return "\n\n".join(text_parts)
-            
-            text = await asyncio.to_thread(extract)
-            return self._clean_text(text)
-            
+            if file_path.suffix.lower() == '.txt':
+                def extract_txt():
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        return f.read()
+                text = await asyncio.to_thread(extract_txt)
+                return self._clean_text(text)
+                
+            elif file_path.suffix.lower() == '.pdf':
+                if not pypdf:
+                    return None
+                    
+                def extract_pdf():
+                    reader = pypdf.PdfReader(str(file_path))
+                    text_parts = []
+                    for page in reader.pages:
+                        text_parts.append(page.extract_text())
+                    return "\n\n".join(text_parts)
+                
+                text = await asyncio.to_thread(extract_pdf)
+                return self._clean_text(text)
+            else:
+                return None
+                
         except Exception as e:
-            print(f"⚠ Failed to extract text from {pdf_path.name}: {e}")
+            print(f"⚠ Failed to extract text from {file_path.name}: {e}")
             return None
     
     def _clean_text(self, text: str) -> str:
@@ -425,14 +456,14 @@ class RAGEngine:
 
                 print(f"📄 Processing: {paper['title'][:60]}...")
                 
-                # Download PDF
-                pdf_path = await self.downloader.download_paper(paper)
-                if not pdf_path:
+                # Download PDF/TXT
+                file_path = await self.downloader.download_paper(paper)
+                if not file_path:
                     print(f"  ⚠ Skipping (no PDF)")
                     continue
                 
                 # Extract text
-                text = await self.processor.extract_text(pdf_path)
+                text = await self.processor.extract_text(file_path)
                 if not text:
                     print(f"  ⚠ Skipping (extraction failed)")
                     continue

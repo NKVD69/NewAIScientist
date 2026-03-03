@@ -101,7 +101,7 @@ async def _get_llm_completion(client, messages, temperature=0.7, json_mode=True)
     except Exception as e:
         error_str = str(e).lower()
         if json_mode and ("response_format" in error_str or "json_object" in error_str) and ("400" in str(e) or "invalid" in error_str):
-            print(f"⚠ LLM reports json_object mode not supported. Switching globally to text mode. (Error: {e})")
+            print(f"ℹ LLM reports json_object mode not supported. Switching globally to text mode. (Error: {e})")
             _LLM_JSON_MODE_SUPPORTED = False
             # Retry in text mode
             kwargs.pop("response_format", None)
@@ -134,6 +134,9 @@ except ImportError:
 try:
     from Bio import Entrez
     Entrez.email = config.get_entrez_email()
+    ncbi_key = config.get_ncbi_api_key()
+    if ncbi_key:
+        Entrez.api_key = ncbi_key
 except ImportError:
     Entrez = None
 
@@ -508,12 +511,21 @@ class LiteratureAgent:
             print("⚠ `biopython` library not found.")
             return []
             
+        # Append filter for Free full text
+        base_query = query + " AND \"free full text\"[Filter]"
+        
         # Query is now passed directly (assumed cleaned/optimized by LLM or fallback)
         # But we still ensure basic safety for Entrez
-        safe_query = re.sub(r'[^\w\s\-\(\)ANDOR]', '', query)
+        safe_query = re.sub(r'[^\w\s\-\(\)ANDOR"]', '', base_query)
         
         try:
             def fetch_pubmed():
+                # Make sure keys are strictly set in case environment changed during runtime
+                Entrez.email = config.get_entrez_email()
+                ncbi_key = config.get_ncbi_api_key()
+                if ncbi_key:
+                    Entrez.api_key = ncbi_key
+                    
                 handle = Entrez.esearch(db="pubmed", term=safe_query, retmax=max_results)
                 record = Entrez.read(handle)
                 handle.close()
@@ -1684,7 +1696,7 @@ Current Evolution Draft:
 - Mechanism: {new_hyp.mechanism}
 
 Provide an improved version as a JSON object with keys: "title", "description", "mechanism", "testable_predictions" (list of strings), "limitations" (list of strings).
-Output ONLY the JSON object. Do not include markdown formatting or explanations.
+**IMPORTANT: Output ONLY the raw JSON object.** Do NOT wrap it in markdown block quotes (```json) and do not include any other text.
 """
         try:
             response = await _get_llm_completion(

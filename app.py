@@ -18,8 +18,21 @@ null = None
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Import du backend
 from co_scientist import CoScientist, ResearchGoal, Hypothesis
+
+class StreamlitRedirector:
+    def __init__(self, text_element):
+        self.text_element = text_element
+        self.buffer = ""
+
+    def write(self, msg):
+        self.buffer += msg
+        if len(self.buffer) > 10000:
+            self.buffer = self.buffer[-10000:]
+        self.text_element.code(self.buffer, language="log")
+
+    def flush(self):
+        pass
 
 CONFIG_FILE = "app_config.json"
 
@@ -163,6 +176,35 @@ with st.sidebar:
         except (AttributeError, KeyError):
             pass  # Not initialized yet
     
+    st.divider()
+    
+    # Authentification PubMed / NCBI
+    st.subheader("🔐 Auth PubMed (NCBI)")
+    st.markdown("Requis pour augmenter la limite de requêtes (10/s) avec PubMed/PMC.")
+    entrez_email = st.text_input("Email Entrez", 
+                                value=config.get("entrez_email", "ai-scientist@example.com"),
+                                key="persist_entrez_email",
+                                on_change=lambda: save_config({"entrez_email": st.session_state.persist_entrez_email}))
+                                
+    ncbi_api_key = st.text_input("Clé API NCBI (optionnel)", 
+                                type="password",
+                                value=config.get("ncbi_api_key", ""),
+                                key="persist_ncbi_api_key",
+                                on_change=lambda: save_config({"ncbi_api_key": st.session_state.persist_ncbi_api_key}))
+                                
+    # Set environ variables dynamically for backend components
+    os.environ["ENTREZ_EMAIL"] = entrez_email
+    if ncbi_api_key:
+        os.environ["NCBI_API_KEY"] = ncbi_api_key
+        
+    try:
+        from Bio import Entrez
+        Entrez.email = entrez_email
+        if ncbi_api_key:
+            Entrez.api_key = ncbi_api_key
+    except ImportError:
+        pass
+
     st.divider()
     # st.info("AI Co-Scientist v1.3\nBased on Google DeepMind Research")
 
@@ -337,6 +379,15 @@ if submit_btn:
     })
     st.session_state.is_running = True
     
+    with st.expander("📝 Logs d'exécution détaillés", expanded=True):
+        log_container = st.empty()
+        
+    redirector = StreamlitRedirector(log_container)
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    sys.stdout = redirector
+    sys.stderr = redirector
+    
     # Standard asyncio execution in Streamlit
     try:
         loop = asyncio.new_event_loop()
@@ -354,6 +405,8 @@ if submit_btn:
         st.error(f"Erreur fatale: {e}")
         logger.error(f"Fatal error: {e}", exc_info=True)
     finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
         loop.close()
         
     st.session_state.is_running = False

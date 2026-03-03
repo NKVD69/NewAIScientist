@@ -6,7 +6,8 @@
   "source_type": [
     "pubmed"
   ],
-  "num_hypotheses": 4,
-  "num_iterations": 2,
-  "max_papers": 8
+  "num_hypotheses": 3,
+  "num_iterations": 1,
+  "max_papers": 3,
+  "entrez_email": "nkvd69@gmail.com"
 }
