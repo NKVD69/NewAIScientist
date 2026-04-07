@@ -353,6 +353,10 @@ async def run_research_cycle():
             status_container.write(f"🧬 Agent Evolution : Amélioration des idées (Cycle {i+1})...")
             await cs.run_evolution_cycle()
             
+            # 5.5 Experiment
+            status_container.write(f"🧪 Agent Expérimentation : Tests empiriques (Cycle {i+1})...")
+            await cs.run_experiment_cycle()
+            
             # 6. Meta-Review
             status_container.write(f"🎯 Agent Meta-Review : Synthèse (Cycle {i+1})...")
             await cs.run_meta_review_cycle()
@@ -490,6 +494,10 @@ if st.session_state.results:
                     <p><strong>⚙️ Mécanisme Scientifique:</strong><br>{h.mechanism}</p>
                 </div>
                 """, unsafe_allow_html=True)
+                
+                if hasattr(h, 'experimental_results') and h.experimental_results:
+                    st.markdown("#### 🧪 Résultats Expérimentaux Empiriques (Code Exécuté)")
+                    st.code(h.experimental_results, language="log")
                 
                 c1, c2 = st.columns(2)
                 with c1:

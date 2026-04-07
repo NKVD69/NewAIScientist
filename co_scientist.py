@@ -184,6 +184,7 @@ class Hypothesis:
     mechanism: str = ""
     testable_predictions: List[str] = field(default_factory=list)
     grounding_evidence: List[str] = field(default_factory=list)
+    experimental_results: str = ""
     
     # Quality metrics
     elo_rating: float = 1200.0  # Initial Elo rating
@@ -1899,6 +1900,102 @@ class Task:
         return self.priority < other.priority
 
 
+class ExperimentAgent:
+    """Agent that generates and runs python code to simulate experiments or analyze data"""
+    
+    def __init__(self, use_local_llm: bool = True):
+        self.name = "Experiment"
+        self.experiments_run = 0
+        self.llm_client = None
+        
+        if use_local_llm and openai:
+            try:
+                self.llm_client = config.get_openai_client()
+            except Exception:
+                self.llm_client = None
+
+    async def run_experiment(self, hypothesis: Hypothesis, goal: ResearchGoal) -> str:
+        if not self.llm_client:
+            return "Simulation skipped: No LLM available for experimental design."
+            
+        print(f"   🧪 [Experiment Agent] Designing experiment for hypothesis: {hypothesis.title}")
+        
+        prompt = f"""
+        Research Goal: {goal.title}
+        Hypothesis: {hypothesis.title}
+        Mechanism: {hypothesis.mechanism}
+        Predictions: {', '.join(hypothesis.testable_predictions)}
+        
+        You are an AI Scientist tasked with empirically validating this hypothesis.
+        Write a Python 3 script that uses standard libraries (numpy, scipy, sklearn) to run a simulation or statistical test for the predictions of this hypothesis. 
+        It MUST be completely self-contained, without assuming external files exist unless you scrape them. Do not use UI libraries.
+        It MUST print a clear summary of the results to stdout at the end, concluding whether the data supports the hypothesis.
+        
+        Output ONLY the python code inside a ```python block. No other explanation.
+        """
+        
+        try:
+            response = await _get_llm_completion(
+                self.llm_client,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                json_mode=False
+            )
+            content = response.choices[0].message.content.strip()
+            
+            code = ""
+            if "```python" in content:
+                code = content.split("```python")[1].split("```")[0].strip()
+            elif "```" in content:
+                code = content.split("```")[1].split("```")[0].strip()
+            else:
+                code = content
+                
+            if not code:
+                return "Failed to generate experimental code."
+                
+            print(f"      Executing experiment script...")
+            
+            import tempfile
+            import subprocess
+            import sys
+            import os
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+                f.write(code)
+                script_path = f.name
+                
+            try:
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    [sys.executable, script_path], 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=30
+                )
+                
+                output = result.stdout
+                if result.stderr:
+                    output += f"\nErrors/Warnings:\n{result.stderr}"
+                    
+                if not output.strip():
+                    output = "Script ran successfully but produced no output."
+                    
+                hypothesis.experimental_results = f"Experimental Results:\n{output[:1500]}"
+                self.experiments_run += 1
+                return hypothesis.experimental_results
+            except subprocess.TimeoutExpired:
+                hypothesis.experimental_results = "Experiment simulation timed out after 30 seconds."
+                return hypothesis.experimental_results
+            finally:
+                if os.path.exists(script_path):
+                    os.remove(script_path)
+                    
+        except Exception as e:
+            hypothesis.experimental_results = f"Experiment implementation failed: {e}"
+            return hypothesis.experimental_results
+
+
 class SupervisorAgent:
     """Orchestrates all specialized agents and manages task queue"""
     
@@ -1939,6 +2036,8 @@ class SupervisorAgent:
                     task.result = await agent.generate_meta_review(**task.params)
                 elif task.action == "search_literature":
                     task.result = await agent.search_literature(**task.params)
+                elif task.action == "experiment":
+                    task.result = await agent.run_experiment(**task.params)
                 
                 task.completed_at = datetime.now()
                 self.task_history.append(task)
@@ -1981,6 +2080,7 @@ class CoScientist:
         self.meta_review_agent = MetaReviewAgent()
         self.literature_agent = LiteratureAgent(use_local_llm=use_local_llm, enable_rag=enable_rag)
         self.graph_agent = GraphAgent(use_local_llm=use_local_llm)
+        self.experiment_agent = ExperimentAgent(use_local_llm=use_local_llm)
         
         # Register agents with supervisor
         self.supervisor.register_agent(self.generation_agent)
@@ -1991,6 +2091,7 @@ class CoScientist:
         self.supervisor.register_agent(self.meta_review_agent)
         self.supervisor.register_agent(self.literature_agent)
         self.supervisor.register_agent(self.graph_agent)
+        self.supervisor.register_agent(self.experiment_agent)
     
     async def initialize_research_goal(self, 
                                        title: str,
@@ -2203,6 +2304,21 @@ class CoScientist:
         print(f"✓ Evolved {len(evolved)} hypotheses")
         return evolved
     
+    async def run_experiment_cycle(self) -> List[Hypothesis]:
+        """Run empirical experiments on top hypotheses"""
+        print(f"\n🧪 Running experiments on top hypotheses...")
+        top_hyps = sorted(
+            self.context_memory.hypotheses.values(),
+            key=lambda h: h.elo_rating,
+            reverse=True
+        )[:2]  # Test only the best 2 to save time and API costs
+        
+        for hyp in top_hyps:
+            await self.experiment_agent.run_experiment(hyp, self.context_memory.research_goal)
+            
+        print(f"✓ Completed {len(top_hyps)} experiments")
+        return top_hyps
+    
     async def run_meta_review_cycle(self) -> Dict[str, Any]:
         """Generate meta-review and research overview"""
         print(f"\n🎯 Generating meta-review...")
@@ -2250,6 +2366,9 @@ class CoScientist:
             
             # Evolution cycle
             await self.run_evolution_cycle()
+            
+            # Experiment cycle
+            await self.run_experiment_cycle()
             
             # Meta-review
             meta_review = await self.run_meta_review_cycle()
@@ -2329,6 +2448,7 @@ class CoScientist:
                     "status": h.status.value,
                     "testable_predictions": h.testable_predictions,
                     "grounding_evidence": h.grounding_evidence,
+                    "experimental_results": getattr(h, "experimental_results", ""),
                     "generation_method": h.generation_method,
                     "num_reviews": len(h.reviews),
                     "cited_papers": h.cited_papers
@@ -2342,7 +2462,8 @@ class CoScientist:
                 "ranking_agent": self.ranking_agent.matches_completed,
                 "evolution_agent": self.evolution_agent.evolved_hypotheses,
                 "meta_review_agent": self.meta_review_agent.meta_reviews_generated,
-                "literature_agent": self.literature_agent.papers_retrieved
+                "literature_agent": self.literature_agent.papers_retrieved,
+                "experiment_agent": self.experiment_agent.experiments_run
             }
         }
         
