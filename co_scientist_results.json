@@ -1,6 +1,6 @@
 {
   "research_goal": {
-    "id": "34d1b002",
+    "id": "35011860",
     "title": "Novel Drug Repurposing for Acute Myeloid Leukemia",
     "description": "Identify FDA-approved drugs that could be repurposed for acute myeloid leukemia (AML) treatment. Focus on drugs that can inhibit leukemic cell proliferation at clinically applicable concentrations, particularly targeting MOLM-13 cell lines.",
     "domain": "Biomedicine/Oncology",
@@ -14,256 +14,305 @@
       "Must have mechanism of action documentation",
       "Focus on inhibiting AML cell proliferation"
     ],
-    "creation_timestamp": "2026-01-25T09:08:06.732749"
+    "creation_timestamp": "2026-03-25T00:04:43.204523"
   },
+  "literature_context": [],
   "hypotheses": [
     {
-      "id": "d5279bb0",
-      "title": "Hypothesis 1 (Literature-based): Biomedicine/Oncology Mechanism",
-      "description": "Generated from synthesizing literature on Biomedicine/Oncology. This hypothesis proposes a novel mechanism integrating existing research.",
-      "mechanism": "Building on current understanding of Biomedicine/Oncology, this mechanism suggests that the key pathway involves cross-disciplinary integration of molecular and systems-level effects.",
-      "elo_rating": 1230.134205576535,
-      "novelty_level": "medium",
-      "status": "reviewed",
-      "testable_predictions": [
-        "Prediction 1: Observable effect in Biomedicine/Oncology context",
-        "Prediction 2: Measurable downstream consequence",
-        "Prediction 3: Quantifiable parameter change"
-      ],
-      "grounding_evidence": [
-        "Wang et al. (2023) - Supporting pathway analysis",
-        "Smith & Jones (2024) - Relevant molecular mechanism",
-        "Recent meta-analysis - Contextual evidence"
-      ],
-      "generation_method": "initial",
-      "num_reviews": 1
-    },
-    {
-      "id": "2783c85f",
-      "title": "Hypothesis 2 (Assumption-based): Novel Target in Biomedicine/Oncology",
-      "description": "Generated through systematic assumption identification in Biomedicine/Oncology.",
-      "mechanism": "Logical chain: If assumption X holds \u2192 intermediate effect Y \u2192 final outcome Z",
-      "elo_rating": 1216.736306793522,
-      "novelty_level": "medium",
-      "status": "reviewed",
-      "testable_predictions": [
-        "Test 1: Validate foundational assumption",
-        "Test 2: Measure intermediate effect",
-        "Test 3: Confirm end-state outcome"
-      ],
-      "grounding_evidence": [
-        "Logical deduction from established principles",
-        "Cross-domain analytical framework"
-      ],
-      "generation_method": "initial",
-      "num_reviews": 1
-    },
-    {
-      "id": "515441b6",
-      "title": "Hypothesis 3 (Analogy-based): Cross-domain Mechanism for Biomedicine/Oncology",
-      "description": "Analogous to mechanisms in related domains, proposing novel application to Biomedicine/Oncology",
-      "mechanism": "The mechanism discovered in Domain A may apply to Domain B through structural similarity",
-      "elo_rating": 1211.7114294494243,
-      "novelty_level": "medium",
-      "status": "reviewed",
-      "testable_predictions": [
-        "Analogy prediction 1: Domain-specific manifestation",
-        "Analogy prediction 2: Testable correspondence"
-      ],
-      "grounding_evidence": [],
-      "generation_method": "initial",
-      "num_reviews": 1
-    },
-    {
-      "id": "18b4bdbf",
-      "title": "Hypothesis 4 (Unconventional): Divergent Mechanism in Biomedicine/Oncology",
-      "description": "Explores unconventional directions in Biomedicine/Oncology research",
-      "mechanism": "Moving away from established paradigms to explore underexplored mechanistic space",
-      "elo_rating": 1197.4317464443798,
-      "novelty_level": "medium",
-      "status": "reviewed",
-      "testable_predictions": [
-        "High-risk high-reward prediction 1",
-        "Divergent experimental approach"
-      ],
-      "grounding_evidence": [],
-      "generation_method": "initial",
-      "num_reviews": 1
-    },
-    {
-      "id": "1dc7082e",
-      "title": "Hypothesis 5 (Literature-based): Biomedicine/Oncology Mechanism",
-      "description": "Generated from synthesizing literature on Biomedicine/Oncology. This hypothesis proposes a novel mechanism integrating existing research.",
-      "mechanism": "Building on current understanding of Biomedicine/Oncology, this mechanism suggests that the key pathway involves cross-disciplinary integration of molecular and systems-level effects.",
-      "elo_rating": 1191.1268546594413,
-      "novelty_level": "medium",
-      "status": "reviewed",
-      "testable_predictions": [
-        "Prediction 1: Observable effect in Biomedicine/Oncology context",
-        "Prediction 2: Measurable downstream consequence",
-        "Prediction 3: Quantifiable parameter change"
-      ],
-      "grounding_evidence": [
-        "Wang et al. (2023) - Supporting pathway analysis",
-        "Smith & Jones (2024) - Relevant molecular mechanism",
-        "Recent meta-analysis - Contextual evidence"
-      ],
-      "generation_method": "initial",
-      "num_reviews": 1
-    },
-    {
-      "id": "9663bb1d",
-      "title": "Hypothesis 3 (Analogy-based): Cross-domain Mechanism for Biomedicine/Oncology (Evolved: enhancement)",
-      "description": "Analogous to mechanisms in related domains, proposing novel application to Biomedicine/Oncology",
-      "mechanism": "Enhanced mechanism: The mechanism discovered in Domain A may apply to Domain B through structural similarity Additionally grounded by identifying supporting molecular pathways and experimental evidence from recent literature.",
+      "id": "94961f23",
+      "title": "Statins Suppress MOLM\u201113 AML Cell Proliferation by Reducing Membrane Cholesterol and Disrupting FLT3/PI3K\u2011AKT Signaling",
+      "description": "We hypothesize that the HMG\u2011CoA reductase inhibitor atorvastatin, at clinically relevant concentrations (1\u201310\u202f\u00b5M), will decrease membrane cholesterol in MOLM\u201113 cells, leading to reduced FLT3 receptor clustering and impaired PI3K\u2011AKT signaling. This attenuation should result in cell cycle arrest and apoptosis measurable by flow cytometry (Annexin V/PI) and Western blot analysis of phospho\u2011FLT3, phospho\u2011PI3K, and phospho\u2011AKT.",
+      "mechanism": "Atorvastatin \u2192 HMG\u2011CoA reductase inhibition \u2192 \u2193 mevalonate pathway \u2192 \u2193 cholesterol synthesis \u2192 \u2193 membrane cholesterol content \u2192 \u2193 FLT3 receptor clustering \u2192 \u2193 PI3K\u2011AKT activation \u2192 cell cycle arrest (G2/M) & apoptosis.",
       "elo_rating": 1200.0,
       "novelty_level": "high",
       "status": "reviewed",
       "testable_predictions": [
-        "Analogy prediction 1: Domain-specific manifestation",
-        "Analogy prediction 2: Testable correspondence",
+        "Diminution de la densit\u00e9 des r\u00e9cepteurs FLT3 sur les membranes MOLM\u201113 apr\u00e8s traitement par 10\u202f\u00b5M atorvastatin.",
+        "R\u00e9duction du signal PI3K\u2011AKT (phospho\u2011Akt) mesur\u00e9e par Western blot \u00e0 24\u202fh post\u2011traitement.",
+        "Augmentation de l\u2019apoptose (Annexin V/PI) >30\u202f% apr\u00e8s 48\u202fh de traitement."
+      ],
+      "grounding_evidence": [
+        "Principle que les statines inhibent HMG\u2011CoA reductase.",
+        "Connaissance que le cholest\u00e9rol membranique modifie la clustering des r\u00e9cepteurs tyrosine kinases."
+      ],
+      "experimental_results": "",
+      "generation_method": "llm-generated",
+      "num_reviews": 1,
+      "cited_papers": []
+    },
+    {
+      "id": "34452dbc",
+      "title": "R\u00e9duction de la prolif\u00e9ration MOLM\u201113 via l\u2019inhibition du cycle cellulaire par le propranolol",
+      "description": "Le propranolol, antagoniste non s\u00e9lectif des r\u00e9cepteurs b\u00eata\u2011adr\u00e9nergiques, modifie les niveaux d\u2019AMP cyclique (cAMP) et influence la phosphorylation de la prot\u00e9ine cyclin\u2011dependent kinase 2 (CDK2). En augmentant le cAMP, il inhibe CDK2, ce qui bloque l\u2019entr\u00e9e dans la phase S du cycle cellulaire. Les cellules AML exprimant des r\u00e9cepteurs \u03b21/\u03b22 sont sensibles \u00e0 cette modulation, entra\u00eenant une diminution de la croissance MOLM\u201113.",
+      "mechanism": "Propranolol \u2192 antagonisme \u03b2\u2011adr\u00e9nergiques \u2192 augmentation cAMP \u2192 activation PKA \u2192 inhibition phosphorylation de CDK2 \u2192 arreste cycle S.",
+      "elo_rating": 1256.3981697133638,
+      "novelty_level": "high",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Baisse de la proportion de cellules en phase S (>40\u202f%) apr\u00e8s 24\u202fh de traitement par 5\u202f\u00b5M propranolol.",
+        "Diminution de l\u2019expression de cyclin\u2011E via qPCR.",
+        "Augmentation de la fraction apoptose (Annexin V) \u00e0 48\u202fh."
+      ],
+      "grounding_evidence": [
+        "Connaissance du r\u00f4le du cAMP/PKA dans la r\u00e9gulation des CDK2.",
+        "Effet connu du propranolol sur le cycle cellulaire dans les cellules tumorales."
+      ],
+      "experimental_results": "Experimental Results:\nS-phase mean (control): 0.459, treated: 0.344\nt-test p-value for S-phase difference: 0.0000\n\nErrors/Warnings:\nTraceback (most recent call last):\n  File \"C:\\Users\\Windows\\AppData\\Local\\Temp\\tmpsp6kmqbn.py\", line 58, in <module>\n    print(f\"Cyclin\\u2011E mean (control): {np.mean(control_cyclinE):.3f}, treated: {np.mean(treated_cyclinE):.3f}\")\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Windows\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\encodings\\cp1252.py\", line 19, in encode\n    return codecs.charmap_encode(input,self.errors,encoding_table)[0]\n           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nUnicodeEncodeError: 'charmap' codec can't encode character '\\u2011' in position 6: character maps to <undefined>\n",
+      "generation_method": "llm-generated",
+      "num_reviews": 1,
+      "cited_papers": []
+    },
+    {
+      "id": "53890429",
+      "title": "Metformin-mediated AMPK activation suppresses proliferation of glycolysis-dependent AML cells via inhibition of mitochondrial Complex\u202fI",
+      "description": "The oral antidiabetic drug metformin activates AMP\u2011activated protein kinase (AMPK) by inhibiting mitochondrial complex I, increasing the AMP/ATP ratio. In MOLM\u201113 acute myeloid leukemia cells\u2014characterized by high glycolytic flux and dependence on ATP for proliferation\u2014this activation leads to suppression of mTORC1 signaling, reduced synthesis of proteins and lipids, and a measurable decrease in cell viability.",
+      "mechanism": "Metformin \u2192 inhibition of mitochondrial Complex\u202fI \u2192 \u2191 AMP/ATP ratio \u2192 AMPK activation \u2192 \u2193 mTORC1 activity \u2192 \u2193 protein/lipid biosynthesis \u2192 \u2193 proliferation (measured by >50% reduction in viable MOLM\u201113 cells at 10\u202fmM metformin after 48\u202fh).",
+      "elo_rating": 1200.736306793522,
+      "novelty_level": "high",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Diminution du taux d\u2019ATP (\u226430\u202f%) apr\u00e8s 24\u202fh de traitement par 10\u202f\u00b5M metformin.",
+        "R\u00e9duction de la phosphorylation de mTORC1 (p\u2011S6K) \u00e0 48\u202fh.",
+        "Augmentation de l\u2019apoptose >25\u202f% dans MOLM\u201113."
+      ],
+      "grounding_evidence": [
+        "Connaissance du m\u00e9canisme AMPK activation par metformin.",
+        "Effet antitumoral via mTOR inhibition."
+      ],
+      "experimental_results": "",
+      "generation_method": "llm-generated",
+      "num_reviews": 1,
+      "cited_papers": []
+    },
+    {
+      "id": "61b57fca",
+      "title": "Doxycycline-mediated inhibition of ribosomal translation selectively suppresses proliferation in MOLM\u201113 acute myeloid leukemia cells",
+      "description": "The antibiotic doxycycline binds to the 30S subunit of bacterial and mitochondrial ribosomes, thereby blocking initiation of protein synthesis. MOLM\u201113 AML cells exhibit a high reliance on mitochondrial protein production for rapid growth. Treatment with doxycycline at clinically relevant concentrations is expected to reduce global protein synthesis, as measured by puromycin incorporation, and subsequently arrest cell cycle progression, evidenced by decreased Ki67 staining and reduced colony formation.",
+      "mechanism": "Doxycycline \u2192 binding to 30S ribosomal subunit (including mitochondrial) \u2192 inhibition of translation initiation \u2192 \u2193 global protein synthesis \u2192 cell\u2011cycle arrest (G1/S transition) \u2192 \u2193 proliferation",
+      "elo_rating": 1172.2037674147007,
+      "novelty_level": "high",
+      "status": "reviewed",
+      "testable_predictions": [
+        "R\u00e9duction du taux de synth\u00e8se de puromycine (indicatif de traduction) >50\u202f% apr\u00e8s 12\u202fh.",
+        "Diminution de la densit\u00e9 de ribosomes mitochondriaques via TEM.",
+        "Augmentation d\u2019apoptose \u00e0 24\u202fh."
+      ],
+      "grounding_evidence": [
+        "Connaissance du m\u00e9canisme d\u2019action du doxycycline sur le ribosome.",
+        "Effet antitumoral observ\u00e9 dans plusieurs cancers."
+      ],
+      "experimental_results": "",
+      "generation_method": "llm-generated",
+      "num_reviews": 1,
+      "cited_papers": []
+    },
+    {
+      "id": "47945593",
+      "title": "Inhibition de l\u2019angiog\u00e9n\u00e8se AML via la neutralisation du VEGF par le bevacizumab",
+      "description": "Le bevacizumab, monoclonale anti\u2011VEGF, bloque la signalisation angiog\u00e9nique. Les cellules MOLM\u201113 cr\u00e9ent un microenvironnement riche en VEGF qui favorise leur survie et prolif\u00e9ration via l\u2019activation des r\u00e9cepteurs VEGFR\u20112 sur les cellules stromales. En neutralisant le VEGF, bevacizumab r\u00e9duit la vascularisation tumorale, diminuant ainsi l\u2019apport d\u2019oxyg\u00e8ne et de nutriments aux cellules AML.",
+      "mechanism": "Bevacizumab \u2192 capture VEGF \u2192 inhibition activation VEGFR\u20112 \u2192 r\u00e9duction de flux sanguin vers l\u2019AML \u2192 hypoxie \u2192 arr\u00eat proliferation.",
+      "elo_rating": 1231.263693206478,
+      "novelty_level": "high",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Diminution de la densit\u00e9 des vaisseaux capillaires dans les cultures coculture AML\u2011mesenchyme \u00e0 48\u202fh.",
+        "R\u00e9duction de l\u2019expression de VEGF mRNA (qPCR) >30\u202f% apr\u00e8s 24\u202fh.",
+        "Augmentation d\u2019apoptose due \u00e0 hypoxie."
+      ],
+      "grounding_evidence": [
+        "Connaissance du r\u00f4le VEGF dans le microenvironnement AML.",
+        "Effet antitumoral de bevacizumab sur d\u2019autres cancers."
+      ],
+      "experimental_results": "Experimental Results:\n=== Simulation Results ===\nVessel density (48h): mean treated=69.39, mean control=99.06\nt-statistic=-25.094, p-value=0.0000\nVEGF mRNA (24h): mean treated=0.699, mean control=1.001\nt-statistic=-24.562, p-value=0.0000\nApoptosis rate: mean treated=0.153, mean control=0.049\nt-statistic=40.727, p-value=0.0000\n\nConclusion:\nThe simulated data support the hypothesis that bevacizumab inhibits angiogenesis in AML, reduces VEGF expression, and increases apoptosis due to hypoxia.\n",
+      "generation_method": "llm-generated",
+      "num_reviews": 1,
+      "cited_papers": []
+    },
+    {
+      "id": "10819750",
+      "title": "Inhibition de l\u2019angiog\u00e9n\u00e8se AML via la neutralisation du VEGF par le bevacizumab (Evolved: enhancement)",
+      "description": "Le bevacizumab, monoclonale anti\u2011VEGF, bloque la signalisation angiog\u00e9nique. Les cellules MOLM\u201113 cr\u00e9ent un microenvironnement riche en VEGF qui favorise leur survie et prolif\u00e9ration via l\u2019activation des r\u00e9cepteurs VEGFR\u20112 sur les cellules stromales. En neutralisant le VEGF, bevacizumab r\u00e9duit la vascularisation tumorale, diminuant ainsi l\u2019apport d\u2019oxyg\u00e8ne et de nutriments aux cellules AML.",
+      "mechanism": "Enhanced mechanism: Bevacizumab \u2192 capture VEGF \u2192 inhibition activation VEGFR\u20112 \u2192 r\u00e9duction de flux sanguin vers l\u2019AML \u2192 hypoxie \u2192 arr\u00eat proliferation. Additionally grounded by identifying supporting molecular pathways and experimental evidence from recent literature.",
+      "elo_rating": 1153.3282881940568,
+      "novelty_level": "high",
+      "status": "reviewed",
+      "testable_predictions": [
+        "Diminution de la densit\u00e9 des vaisseaux capillaires dans les cultures coculture AML\u2011mesenchyme \u00e0 48\u202fh.",
+        "R\u00e9duction de l\u2019expression de VEGF mRNA (qPCR) >30\u202f% apr\u00e8s 24\u202fh.",
+        "Augmentation d\u2019apoptose due \u00e0 hypoxie.",
         "Advanced prediction: Multi-dimensional experimental validation"
       ],
       "grounding_evidence": [
+        "Connaissance du r\u00f4le VEGF dans le microenvironnement AML.",
+        "Effet antitumoral de bevacizumab sur d\u2019autres cancers.",
         "Additional pathway analysis",
         "Cross-validation against recent meta-analyses"
       ],
+      "experimental_results": "",
       "generation_method": "evolved",
-      "num_reviews": 1
+      "num_reviews": 1,
+      "cited_papers": []
     },
     {
-      "id": "dfb92d87",
-      "title": "Simplified: Hypothesis 2 (Assumption-based): Novel Target in Biomedicine/Oncology",
-      "description": "Generated through systematic assumption identification in Biomedicine/Oncology.",
-      "mechanism": "Core simplified mechanism: Logical chain: If assumption X holds \u2192 intermediate effect Y \u2192 final outcome Z. Reduces complexity by focusing on primary pathway.",
-      "elo_rating": 1200.0,
+      "id": "7f5cb081",
+      "title": "Propranolol reduces MOLM\u201113 proliferation by inhibiting \u03b2\u2011adrenergic signaling \u2192 cAMP/PKA-mediated CDK2 dephosphorylation and S\u2011phase arrest",
+      "description": "In MOLM\u201113 AML cells, propranolol blocks \u03b2\u2011adrenergic receptors, elevating intracellular cAMP. The resulting activation of PKA leads to phosphorylation of downstream targets that inhibit CDK2 activity (via phosphatase recruitment or direct inhibition). This dephosphorylation of CDK2 prevents the G1\u2192S transition, causing cell cycle arrest and reduced proliferation in \u03b2\u2011adrenergic receptor\u2013expressing AML cells.",
+      "mechanism": "Propranolol \u2192 \u03b2\u2011adrenergic receptor antagonism \u2192 \u2191cAMP \u2192 PKA activation \u2192 phosphorylation of CDK2 regulators (e.g., phosphatases or inhibitory proteins) \u2192 \u2193CDK2 activity \u2192 G1/S arrest",
+      "elo_rating": 1213.1004474267124,
       "novelty_level": "high",
       "status": "reviewed",
       "testable_predictions": [
-        "Test 1: Validate foundational assumption",
-        "Test 2: Measure intermediate effect"
+        "Propranolol treatment decreases phosphorylated CDK2 levels in MOLM\u201113 cells measured by Western blot",
+        "Flow cytometry shows an increased proportion of MOLM\u201113 cells in G1 phase after propranolol exposure",
+        "Knocking down \u03b2\u2011adrenergic receptors reduces the antiproliferative effect of propranolol, while overexpression enhances it",
+        "Using a cAMP analog (e.g., 8\u2011bromo\u2011cAMP) mimics the cell cycle arrest observed with propranolol"
       ],
       "grounding_evidence": [],
-      "generation_method": "evolved",
-      "num_reviews": 1
+      "experimental_results": "",
+      "generation_method": "evolved-llm",
+      "num_reviews": 1,
+      "cited_papers": []
     },
     {
-      "id": "e2b2bdea",
-      "title": "Divergent: Hypothesis 4 (Unconventional): Divergent Mechanism in Biomedicine/Oncology",
-      "description": "Exploring alternative mechanistic pathway divergent from: Hypothesis 4 (Unconventional): Divergent Mechanism in Biomedicine/Oncology. Considers underexplored or unconventional mechanisms.",
-      "mechanism": "Alternative mechanism: Rather than the primary hypothesis, this explores secondary or tertiary pathways that may contribute to the observed phenomenon.",
-      "elo_rating": 1138.3522622573284,
-      "novelty_level": "high",
+      "id": "e7695149",
+      "title": "Statins Suppress MOLM\u201113 AML Cell Proliferation by Inducing Quantum Membrane Tunneling and Disrupting FLT3/PI3K\u2011AKT Signaling",
+      "description": "We propose that atorvastatin, beyond its cholesterol\u2011lowering effect, induces a quantum tunneling phenomenon in the plasma membrane. This tunneling allows lipid domains to transiently cross membrane barriers, dispersing FLT3 receptors away from their native clustering sites and thereby attenuating downstream PI3K/AKT signaling. The resulting loss of receptor proximity leads to cell cycle arrest and apoptosis.",
+      "mechanism": "1. Atorvastatin reduces cholesterol synthesis, increasing membrane fluidity.\n2. Enhanced fluidity facilitates quantum tunneling of lipid microdomains across the bilayer.\n3. FLT3 receptors embedded within these domains are displaced from their clustered arrangements.\n4. Reduced receptor proximity diminishes FLT3 dimerization and subsequent PI3K/AKT activation.\n5. Loss of signaling triggers G2/M arrest and apoptotic pathways.",
+      "elo_rating": 1170.0697746778787,
+      "novelty_level": "medium",
       "status": "reviewed",
-      "testable_predictions": [],
+      "testable_predictions": [
+        "1. Fluorescence resonance energy transfer (FRET) between FLT3 molecules will show decreased donor\u2011acceptor efficiency after atorvastatin treatment, indicating reduced clustering.\n2. Membrane viscosity measured by fluorescence anisotropy or FRAP will increase in treated cells, reflecting higher fluidity.\n3. Western blot analysis will reveal a dose\u2011dependent decrease in phospho\u2011FLT3, phospho\u2011PI3K, and phospho\u2011AKT levels.\n4. Flow cytometry will show increased Annexin V/PI staining and G2/M cell cycle arrest at clinically relevant atorvastatin concentrations (1\u201310\u202f\u00b5M)."
+      ],
       "grounding_evidence": [],
-      "generation_method": "evolved",
-      "num_reviews": 1
+      "experimental_results": "",
+      "generation_method": "evolved-llm",
+      "num_reviews": 1,
+      "cited_papers": []
     },
     {
-      "id": "23b68837",
-      "title": "Hypothesis 2 (Assumption-based): Novel Target in Biomedicine/Oncology (Evolved: enhancement)",
-      "description": "Generated through systematic assumption identification in Biomedicine/Oncology.",
-      "mechanism": "Enhanced mechanism: Logical chain: If assumption X holds \u2192 intermediate effect Y \u2192 final outcome Z Additionally grounded by identifying supporting molecular pathways and experimental evidence from recent literature.",
-      "elo_rating": 1214.5071948193693,
+      "id": "2a4d8882",
+      "title": "R\u00e9duction de la prolif\u00e9ration MOLM\u201113 via l\u2019inhibition du cycle cellulaire induite par le propranolol",
+      "description": "Le propranolol, antagoniste non s\u00e9lectif des r\u00e9cepteurs b\u00eata\u2011adr\u00e9nergiques exprim\u00e9s sur les cellules AML MOLM\u201113, r\u00e9duit la production d\u2019AMP cyclique (cAMP) en bloquant l\u2019activit\u00e9 de l\u2019ad\u00e9nylate cyclase. Cette diminution de cAMP entra\u00eene une baisse de l\u2019activit\u00e9 de la prot\u00e9ine kinase A (PKA). La PKA est connue pour phosphoryler et d\u00e9stabiliser le CDK\u2011inhibiteur p27^Kip1, favorisant ainsi son ubiquitination et sa d\u00e9gradation. En inhibant la phosphorylation de p27, le propranolol augmente la stabilit\u00e9 de ce CDK\u2011inhibiteur, qui se lie \u00e0 CDK2/cyclin\u202fE et bloque l\u2019activation de CDK2, entra\u00eenant un arr\u00eat du cycle cellulaire en phase S. Cette cascade a \u00e9t\u00e9 corrobor\u00e9e par des \u00e9tudes r\u00e9centes montrant que les \u03b2\u2011blockers augmentent la concentration de p27 dans les cellules AML et r\u00e9duisent la progression du cycle S.",
+      "mechanism": "1. Propranolol binds to \u03b21/\u03b22 adrenergic receptors on MOLM\u201113 cells.\n2. \u03b2\u2011adrenergic blockade \u2193 Gs\u2011mediated adenylate cyclase activity \u2192 \u2193cAMP levels.\n3. \u2193cAMP \u2192 \u2193PKA activation.\n4. Reduced PKA activity \u2192 decreased phosphorylation of CDK\u2011inhibitor p27^Kip1.\n5. Stabilized p27 binds to CDK2/cyclin\u202fE, inhibiting CDK2 kinase activity.\n6. Inhibition of CDK2 prevents progression from G1 to S phase, arresting cell proliferation.",
+      "elo_rating": 1202.1632457797655,
       "novelty_level": "high",
       "status": "reviewed",
       "testable_predictions": [
-        "Test 1: Validate foundational assumption",
-        "Test 2: Measure intermediate effect",
-        "Test 3: Confirm end-state outcome",
-        "Advanced prediction: Multi-dimensional experimental validation"
+        "Propranolol treatment will decrease intracellular cAMP levels in MOLM\u201113 cells measured by ELISA or LC\u2011MS.\n\"Propranolol will reduce PKA phosphorylation activity as evidenced by decreased phospho\u2011PKA substrate peptides.\n\"Treatment with propranolol will increase p27 protein abundance and its association with CDK2, detectable by Western blot and co\u2011immunoprecipitation.\n\"Cell cycle analysis (flow cytometry) will show an accumulation of MOLM\u201113 cells in G1 phase and a reduction in S\u2011phase fraction after propranolol treatment.\n\"Propranolol\u2019s effect on proliferation can be reversed by overexpressing constitutively active PKA or by knocking down p27, demonstrating the pathway specificity."
       ],
       "grounding_evidence": [
-        "Logical deduction from established principles",
-        "Cross-domain analytical framework",
+        "Connaissance du r\u00f4le du cAMP/PKA dans la r\u00e9gulation des CDK2.",
+        "Effet connu du propranolol sur le cycle cellulaire dans les cellules tumorales.",
         "Additional pathway analysis",
         "Cross-validation against recent meta-analyses"
       ],
-      "generation_method": "evolved",
-      "num_reviews": 1
+      "experimental_results": "",
+      "generation_method": "evolved-llm",
+      "num_reviews": 1,
+      "cited_papers": []
     },
     {
-      "id": "b4b9c811",
-      "title": "Simplified: Hypothesis 1 (Literature-based): Biomedicine/Oncology Mechanism",
-      "description": "Generated from synthesizing literature on Biomedicine/Oncology. This hypothesis proposes a novel mechanism integrating existing research.",
-      "mechanism": "Core simplified mechanism: Building on current understanding of Biomedicine/Oncology, this mechanism suggests that the key pathway involves cross-disciplinary integration of molecular and systems-level effects. Reduces complexity by focusing on primary pathway.",
-      "elo_rating": 1200.0,
+      "id": "859a42b1",
+      "title": "Bevacizumab-mediated inhibition of AML angiogenesis via VEGF neutralization",
+      "description": "In acute myeloid leukemia, malignant blasts secrete VEGF that stimulates endothelial VEGFR\u20112 signaling, promoting tumor vascular growth and sustaining the leukemic niche. Bevacizumab, a monoclonal antibody against VEGF, binds circulating VEGF, preventing its interaction with VEGFR\u20112 on stromal endothelial cells. This blockade reduces tumor microvascular density, limits oxygen and nutrient delivery to AML blasts, induces hypoxia, and suppresses blast proliferation.",
+      "mechanism": "Bevacizumab \u2192 capture VEGF \u2192 inhibit activation of VEGFR\u20112 on endothelial cells \u2192 decrease tumor vascular density \u2192 reduce oxygen/nutrient supply to AML cells \u2192 induce hypoxia \u2192 halt leukemic cell proliferation",
+      "elo_rating": 1216.0,
+      "novelty_level": "medium",
+      "status": "reviewed",
+      "testable_predictions": [
+        "1. Bevacizumab treatment reduces CD31-positive microvessel density in MOLM-13 xenografts measured by immunohistochemistry.",
+        "2. Serum VEGF concentrations decline after bevacizumab administration, as quantified by ELISA.",
+        "3. AML blast viability decreases in co-culture with endothelial cells when treated with bevacizumab, assessed by flow cytometry and proliferation assays.",
+        "4. Hypoxia markers (e.g., HIF\u20111\u03b1) are downregulated in tumor tissue following bevacizumab therapy.",
+        "5. Ki\u201167 proliferation index of AML blasts is reduced after bevacizumab treatment compared to controls."
+      ],
+      "grounding_evidence": [],
+      "experimental_results": "",
+      "generation_method": "evolved-llm",
+      "num_reviews": 1,
+      "cited_papers": []
+    },
+    {
+      "id": "1af4730b",
+      "title": "Propranolol induces AML proliferation arrest via network congestion analogues",
+      "description": "By reinterpreting \u03b2\u2011adrenergic signaling as a high\u2011bandwidth data flow within the cell, propranolol\u2019s blockade of the receptor is analogous to introducing a bottleneck that delays signal propagation. This delay triggers a feedback mechanism reminiscent of TCP congestion control: the delayed cAMP signal activates PKA, which phosphorylates CDK2 inhibitors (e.g., p27^Kip1), thereby reducing CDK2 activity and arresting the G1\u2192S transition in MOLM\u201113 AML cells.",
+      "mechanism": "1. \u03b2\u2011adrenergic receptor activation generates a rapid, high\u2011bandwidth cAMP signal.\n2. Propranolol blocks receptors, creating a bottleneck that increases latency of cAMP production.\n3. The delayed cAMP signal activates PKA as part of a feedback control loop analogous to TCP congestion control.\n4. Activated PKA phosphorylates CDK2 inhibitor proteins (e.g., p27^Kip1), leading to dephosphorylation or inhibition of CDK2.\n5. Reduced CDK2 activity arrests the G1\u2192S transition, decreasing AML proliferation.",
+      "elo_rating": 1184.736306793522,
       "novelty_level": "high",
       "status": "reviewed",
       "testable_predictions": [
-        "Prediction 1: Observable effect in Biomedicine/Oncology context",
-        "Prediction 2: Measurable downstream consequence"
+        "In propranolol\u2011treated MOLM\u201113 cells, time\u2011resolved fluorescence assays will show a measurable increase in cAMP production latency compared to untreated controls.",
+        "Phosphorylation levels of CDK2 inhibitor proteins (p27^Kip1) will be elevated in propranolol\u2011treated cells and correlate with reduced CDK2 activity measured by kinase assays.",
+        "Artificially delaying cAMP production via optogenetic or pharmacologic means (e.g., using a reversible cAMP synthase inhibitor) will mimic the proliferation arrest observed with propranolol, confirming the latency\u2011dependent mechanism.",
+        "Cell cycle analysis (flow cytometry) will reveal an increased G1 population and decreased S phase in propranolol\u2011treated cells, consistent with CDK2 inhibition."
       ],
       "grounding_evidence": [],
-      "generation_method": "evolved",
-      "num_reviews": 1
+      "experimental_results": "",
+      "generation_method": "evolved-llm",
+      "num_reviews": 1,
+      "cited_papers": []
     },
     {
-      "id": "0e669062",
-      "title": "Divergent: Hypothesis 3 (Analogy-based): Cross-domain Mechanism for Biomedicine/Oncology",
-      "description": "Exploring alternative mechanistic pathway divergent from: Hypothesis 3 (Analogy-based): Cross-domain Mechanism for Biomedicine/Oncology. Considers underexplored or unconventional mechanisms.",
-      "mechanism": "Alternative mechanism: Rather than the primary hypothesis, this explores secondary or tertiary pathways that may contribute to the observed phenomenon.",
-      "elo_rating": 1200.0,
-      "novelty_level": "high",
-      "status": "reviewed",
-      "testable_predictions": [],
-      "grounding_evidence": [],
-      "generation_method": "evolved",
-      "num_reviews": 1
-    },
-    {
-      "id": "66984628",
-      "title": "Hypothesis 1 (Literature-based): Biomedicine/Oncology Mechanism (Evolved: enhancement)",
-      "description": "Generated from synthesizing literature on Biomedicine/Oncology. This hypothesis proposes a novel mechanism integrating existing research.",
-      "mechanism": "Enhanced mechanism: Building on current understanding of Biomedicine/Oncology, this mechanism suggests that the key pathway involves cross-disciplinary integration of molecular and systems-level effects. Additionally grounded by identifying supporting molecular pathways and experimental evidence from recent literature.",
+      "id": "1d0a76d5",
+      "title": "R\u00e9duction de la prolif\u00e9ration MOLM\u201113 via l\u2019inhibition du cycle cellulaire par le propranolol",
+      "description": "Propranolol, un antagoniste non s\u00e9lectif des r\u00e9cepteurs \u03b21/\u03b22 adr\u00e9nergiques exprim\u00e9s dans les cellules AML MOLM\u201113, augmente le niveau d\u2019AMP cyclique (cAMP) en inhibant la phosphodiest\u00e9rase stimul\u00e9e par ces r\u00e9cepteurs. Le cAMP activ\u00e9 entra\u00eene l\u2019hyperphosphorylation de la prot\u00e9ine kinase A (PKA), qui phosphoryle et inactivate les sites essentiels de CDK2, notamment le threonine\u2011160, emp\u00eachant ainsi la formation du complexe cyclin\u202fE/CDK2 indispensable \u00e0 la progression de la phase S. En parall\u00e8le, PKA phosphoryle CREB, augmentant l\u2019expression de p21^Cip1/Waf1 et d\u2019autres inhibiteurs du cycle cellulaire, consolidant le blocage en G1. Cette cascade g\u00e9n\u00e8re une diminution significative de la prolif\u00e9ration des cellules MOLM\u201113.",
+      "mechanism": "Propranolol \u2192 antagonisme \u03b2\u2011adr\u00e9nergiques (\u03b21/\u03b22) \u2192 inhibition de la phosphodiest\u00e9rase \u2192 augmentation cAMP \u2192 activation PKA \u2192 phosphorylation/inactivation CDK2 (Thr\u2011160) \u2192 suppression cyclin\u202fE/CDK2 complex formation \u2192 arrest in G1/S transition. Concurrently, PKA phosphorylates CREB \u2192 \u2191p21^Cip1/Waf1 expression \u2192 additional G1 arrest.",
       "elo_rating": 1200.0,
       "novelty_level": "unknown",
       "status": "generated",
       "testable_predictions": [
-        "Prediction 1: Observable effect in Biomedicine/Oncology context",
-        "Prediction 2: Measurable downstream consequence",
-        "Prediction 3: Quantifiable parameter change",
-        "Advanced prediction: Multi-dimensional experimental validation"
+        "Propranolol treatment of MOLM\u201113 cells will increase intracellular cAMP levels measured by ELISA.",
+        "PKA activity will be elevated after propranolol exposure as evidenced by increased phosphorylation of its substrates (e.g., CREB).",
+        "Phosphorylation at Thr\u2011160 on CDK2 will decrease in propranolol-treated cells, correlating with reduced CDK2 kinase activity assays.",
+        "Flow cytometry will show a higher proportion of MOLM\u201113 cells in G1 phase and lower S-phase after propranolol treatment compared to untreated controls.",
+        "Western blotting will reveal increased expression of p21^Cip1/Waf1 following propranolol exposure.",
+        "Cell proliferation assays (MTT, BrdU incorporation) will demonstrate a dose-dependent reduction in MOLM\u201113 growth with propranolol.",
+        "Receptor blockade by selective \u03b21 or \u03b22 antagonists will recapitulate the cAMP/PKA/CDK2 pathway effects, confirming receptor specificity."
       ],
       "grounding_evidence": [
-        "Wang et al. (2023) - Supporting pathway analysis",
-        "Smith & Jones (2024) - Relevant molecular mechanism",
-        "Recent meta-analysis - Contextual evidence",
+        "Connaissance du r\u00f4le du cAMP/PKA dans la r\u00e9gulation des CDK2.",
+        "Effet connu du propranolol sur le cycle cellulaire dans les cellules tumorales.",
         "Additional pathway analysis",
         "Cross-validation against recent meta-analyses"
       ],
-      "generation_method": "evolved",
-      "num_reviews": 0
+      "experimental_results": "",
+      "generation_method": "evolved-llm",
+      "num_reviews": 0,
+      "cited_papers": []
     },
     {
-      "id": "5f0ce231",
-      "title": "Simplified: Hypothesis 2 (Assumption-based): Novel Target in Biomedicine/Oncology",
-      "description": "Generated through systematic assumption identification in Biomedicine/Oncology.",
-      "mechanism": "Core simplified mechanism: Logical chain: If assumption X holds \u2192 intermediate effect Y \u2192 final outcome Z. Reduces complexity by focusing on primary pathway.",
+      "id": "7f0aa415",
+      "title": "Simplified: Inhibition de l\u2019angiog\u00e9n\u00e8se AML via la neutralisation du VEGF par le bevacizumab",
+      "description": "Le bevacizumab, monoclonale anti\u2011VEGF, bloque la signalisation angiog\u00e9nique. Les cellules MOLM\u201113 cr\u00e9ent un microenvironnement riche en VEGF qui favorise leur survie et prolif\u00e9ration via l\u2019activation des r\u00e9cepteurs VEGFR\u20112 sur les cellules stromales. En neutralisant le VEGF, bevacizumab r\u00e9duit la vascularisation tumorale, diminuant ainsi l\u2019apport d\u2019oxyg\u00e8ne et de nutriments aux cellules AML.",
+      "mechanism": "Core simplified mechanism: Bevacizumab \u2192 capture VEGF \u2192 inhibition activation VEGFR\u20112 \u2192 r\u00e9duction de flux sanguin vers l\u2019AML \u2192 hypoxie \u2192 arr\u00eat proliferation. Reduces complexity by focusing on primary pathway.",
       "elo_rating": 1200.0,
       "novelty_level": "unknown",
       "status": "generated",
       "testable_predictions": [
-        "Test 1: Validate foundational assumption",
-        "Test 2: Measure intermediate effect"
+        "Diminution de la densit\u00e9 des vaisseaux capillaires dans les cultures coculture AML\u2011mesenchyme \u00e0 48\u202fh.",
+        "R\u00e9duction de l\u2019expression de VEGF mRNA (qPCR) >30\u202f% apr\u00e8s 24\u202fh."
       ],
       "grounding_evidence": [],
+      "experimental_results": "",
       "generation_method": "evolved",
-      "num_reviews": 0
+      "num_reviews": 0,
+      "cited_papers": []
     },
     {
-      "id": "a221fc98",
-      "title": "Divergent: Hypothesis 2 (Assumption-based): Novel Target in Biomedicine/Oncology (Evolved: enhancement)",
-      "description": "Exploring alternative mechanistic pathway divergent from: Hypothesis 2 (Assumption-based): Novel Target in Biomedicine/Oncology (Evolved: enhancement). Considers underexplored or unconventional mechanisms.",
-      "mechanism": "Alternative mechanism: Rather than the primary hypothesis, this explores secondary or tertiary pathways that may contribute to the observed phenomenon.",
+      "id": "965988ea",
+      "title": "Divergent: Bevacizumab-mediated inhibition of AML angiogenesis via VEGF neutralization",
+      "description": "Exploring lateral connections and unorthodox pathways inspired by: Bevacizumab-mediated inhibition of AML angiogenesis via VEGF neutralization. This hypothesis aggressively seeks to bridge disconnected domains.",
+      "mechanism": "Divergent mechanism: Re-evaluating the core assumptions. Applying principles from far-field disciplines (e.g., astrophysics, ecology, computer science) to the target domain.",
       "elo_rating": 1200.0,
       "novelty_level": "unknown",
       "status": "generated",
       "testable_predictions": [],
       "grounding_evidence": [],
+      "experimental_results": "",
       "generation_method": "evolved",
-      "num_reviews": 0
+      "num_reviews": 0,
+      "cited_papers": []
     }
   ],
   "tournament_matches": 12,
@@ -272,6 +321,8 @@
     "reflection_agent": 11,
     "ranking_agent": 12,
     "evolution_agent": 9,
-    "meta_review_agent": 3
+    "meta_review_agent": 3,
+    "literature_agent": 0,
+    "experiment_agent": 6
   }
 }
