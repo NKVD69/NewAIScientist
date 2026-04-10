@@ -165,47 +165,47 @@ class PDFDownloader:
         cache_path = self.cache_dir / f"pmc_{clean_pmcid}.txt"
         
         try:
-           if cache_path.exists():
-               return cache_path
-               
-           def download():
-               handle = Entrez.efetch(db="pmc", id=clean_pmcid, retmode="xml")
-               record = handle.read()
-               handle.close()
-               
-               import xml.etree.ElementTree as ET
-               try:
-                   root = ET.fromstring(record)
-                   paragraphs = []
-                   for p in root.iter('p'):
-                       text = "".join(p.itertext()).strip()
-                       if text:
-                           paragraphs.append(text)
-                           
-                   text_content = "\n\n".join(paragraphs)
-                   
-                   # Fallback to abstract
-                   if not text_content.strip():
-                       for abstract in root.iter('abstract'):
-                           text = "".join(abstract.itertext()).strip()
-                           if text:
-                               paragraphs.append(text)
-                       text_content = "\n\n".join(paragraphs)
-                       
-                   if not text_content.strip():
-                       print(f"ℹ No text content found in XML for {pmid}")
-                       return None
-                       
-                   with open(cache_path, 'w', encoding='utf-8') as out_file:
-                       out_file.write(text_content)
-                       
-                   return cache_path
-               except Exception as e:
-                   print(f"⚠ Failed to parse PMC XML for {pmid}: {e}")
-                   return None
-                   
-           return await asyncio.to_thread(download)
-           
+            if cache_path.exists():
+                return cache_path
+
+            def download():
+                handle = Entrez.efetch(db="pmc", id=clean_pmcid, retmode="xml")
+                record = handle.read()
+                handle.close()
+
+                import xml.etree.ElementTree as ET
+                try:
+                    root = ET.fromstring(record)
+                    paragraphs = []
+                    for p in root.iter('p'):
+                        text = "".join(p.itertext()).strip()
+                        if text:
+                            paragraphs.append(text)
+
+                    text_content = "\n\n".join(paragraphs)
+
+                    # Fallback to abstract
+                    if not text_content.strip():
+                        for abstract in root.iter('abstract'):
+                            text = "".join(abstract.itertext()).strip()
+                            if text:
+                                paragraphs.append(text)
+                        text_content = "\n\n".join(paragraphs)
+
+                    if not text_content.strip():
+                        print(f"ℹ No text content found in XML for {pmid}")
+                        return None
+
+                    with open(cache_path, 'w', encoding='utf-8') as out_file:
+                        out_file.write(text_content)
+
+                    return cache_path
+                except Exception as e:
+                    print(f"⚠ Failed to parse PMC XML for {pmid}: {e}")
+                    return None
+
+            return await asyncio.to_thread(download)
+
         except Exception as e:
             print(f"⚠ Failed to download PMC text for {pmid}: {e}")
             return None

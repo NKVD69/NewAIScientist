@@ -1,5 +1,5 @@
 openai>=1.0.0
-streamlit>=1.30.0
+streamlit>=1.31.0
 pandas>=2.0.0
 plotly>=5.0.0
 arxiv>=2.1.0
@@ -10,3 +10,13 @@ pypdf>=3.0.0
 sentence-transformers>=2.2.0
 chromadb>=0.4.0
 tiktoken>=0.5.0
+
+# PDF generation with Unicode support
+fpdf2>=2.7.4
+
+# Async helpers for Streamlit + asyncio bridge
+# nest_asyncio>=1.6.0  # Optional: alternative to ThreadPoolExecutor approach
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0

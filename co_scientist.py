@@ -77,17 +77,35 @@ def _parse_json_response(content: str) -> Any:
         
     raise json.JSONDecodeError("Could not find valid JSON", content, 0)
 
-_LLM_JSON_MODE_SUPPORTED = True
+# Per-session LLM state dict (replaces mutable global bool → thread-safe per-invocation)
+_llm_state: dict = {
+    "json_mode_supported": True,  # Resets when a new model is detected
+    "total_tokens": 0,            # Cumulative tokens used this session
+    "total_calls": 0,             # Cumulative API calls this session
+    "last_model": None,           # Detect model changes to reset json_mode flag
+}
+
+
+def get_llm_usage_stats() -> dict:
+    """Return a snapshot of current LLM session usage statistics."""
+    return dict(_llm_state)
+
 
 async def _get_llm_completion(client, messages, temperature=0.7, json_mode=True):
-    """Robust wrapper for LLM completions with automatic format negotiation."""
-    global _LLM_JSON_MODE_SUPPORTED
+    """Robust wrapper for LLM completions with automatic format negotiation and usage tracking."""
+    global _llm_state
     model_name = config.get_llm_model_name()
-    
-    # If we know json_mode isn't supported globally, force it off
-    if not _LLM_JSON_MODE_SUPPORTED:
+
+    # Reset json_mode flag if the user has switched models mid-session
+    if _llm_state["last_model"] is not None and _llm_state["last_model"] != model_name:
+        logger.info("Model changed (%s → %s): resetting JSON mode flag.",
+                    _llm_state["last_model"], model_name)
+        _llm_state["json_mode_supported"] = True
+    _llm_state["last_model"] = model_name
+
+    if not _llm_state["json_mode_supported"]:
         json_mode = False
-        
+
     try:
         kwargs = {
             "model": model_name,
@@ -96,16 +114,26 @@ async def _get_llm_completion(client, messages, temperature=0.7, json_mode=True)
         }
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        
-        return await asyncio.to_thread(client.chat.completions.create, **kwargs)
+
+        response = await asyncio.to_thread(client.chat.completions.create, **kwargs)
+
+        # Track token usage when the model reports it
+        if hasattr(response, 'usage') and response.usage:
+            _llm_state["total_tokens"] += getattr(response.usage, 'total_tokens', 0) or 0
+        _llm_state["total_calls"] += 1
+
+        return response
     except Exception as e:
         error_str = str(e).lower()
         if json_mode and ("response_format" in error_str or "json_object" in error_str) and ("400" in str(e) or "invalid" in error_str):
-            print(f"ℹ LLM reports json_object mode not supported. Switching globally to text mode. (Error: {e})")
-            _LLM_JSON_MODE_SUPPORTED = False
-            # Retry in text mode
+            print(f"ℹ LLM reports json_object mode not supported. Switching to text mode. (Error: {e})")
+            _llm_state["json_mode_supported"] = False
             kwargs.pop("response_format", None)
-            return await asyncio.to_thread(client.chat.completions.create, **kwargs)
+            response = await asyncio.to_thread(client.chat.completions.create, **kwargs)
+            if hasattr(response, 'usage') and response.usage:
+                _llm_state["total_tokens"] += getattr(response.usage, 'total_tokens', 0) or 0
+            _llm_state["total_calls"] += 1
+            return response
         raise e
 
 def _ensure_str(value: Any) -> str:
@@ -664,12 +692,7 @@ class LiteratureAgent:
             print(f"      ⚠ Reranking failed: {e}. Falling back to default ordering.")
             return chunks[:top_k]
     
-    def get_rag_stats(self) -> Dict:
-        """Get RAG system statistics"""
-        if not self.rag_engine:
-            return {"status": "disabled"}
-        
-        return self.rag_engine.get_stats()
+    # NOTE: get_rag_stats() is defined earlier in this class (L.409). Second definition removed.
 
 
 
@@ -1372,13 +1395,58 @@ Evaluate this hypothesis on the following criteria and return a JSON object:
         return " | ".join(feedback_parts) if feedback_parts else "Further review recommended"
 
 
+# ===========================================================================
+# CODE SAFETY UTILITIES (used by ExperimentAgent)
+# ===========================================================================
+
+_DANGEROUS_MODULES: frozenset = frozenset({
+    'os', 'sys', 'subprocess', 'shutil', 'pathlib', 'socket',
+    'requests', 'urllib', 'ftplib', 'smtplib', 'ctypes', 'winreg',
+    'multiprocessing', 'threading', 'signal', 'fcntl', 'pty',
+})
+
+
+def _check_code_safety(code: str) -> tuple:
+    """
+    AST-based safety check for LLM-generated experimental code.
+    Returns (is_safe: bool, reason: str).
+    Blocks dangerous system-level imports before execution.
+    """
+    import ast as _ast
+    try:
+        tree = _ast.parse(code)
+    except SyntaxError as e:
+        return False, f"Syntax error in generated code: {e}"
+
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Import):
+            for alias in node.names:
+                mod = alias.name.split('.')[0]
+                if mod in _DANGEROUS_MODULES:
+                    return False, f"Blocked import: '{alias.name}' (restricted module)"
+        elif isinstance(node, _ast.ImportFrom):
+            if node.module:
+                mod = node.module.split('.')[0]
+                if mod in _DANGEROUS_MODULES:
+                    return False, f"Blocked import from: '{node.module}' (restricted module)"
+
+    return True, "OK"
+
+
 class RankingAgent:
-    """Tournament-based hypothesis ranking using Elo system"""
-    
-    def __init__(self):
+    """Tournament-based hypothesis ranking using Elo system with LLM-as-judge."""
+
+    def __init__(self, use_local_llm: bool = True):
         self.name = "Ranking"
         self.k_factor = 32  # Elo K-factor
         self.matches_completed = 0
+        self.llm_client = None
+
+        if use_local_llm and openai:
+            try:
+                self.llm_client = config.get_openai_client()
+            except Exception:
+                self.llm_client = None
     
     async def conduct_tournament_match(self,
                                       hyp_a: Hypothesis,
@@ -1409,23 +1477,66 @@ class RankingAgent:
     
     async def _simulate_debate(self, hyp_a: Hypothesis, hyp_b: Hypothesis) -> str:
         """
-        Simulate scientific debate between two hypotheses.
+        Determine the winning hypothesis via LLM-as-judge (primary) or
+        score-based heuristic with randomness (fallback).
         Returns ID of winning hypothesis.
         """
-        
-        # Score both based on available metrics
+        # Primary path: LLM judge
+        if self.llm_client:
+            try:
+                winner_id = await self._llm_debate(hyp_a, hyp_b)
+                if winner_id:
+                    return winner_id
+            except Exception as e:
+                logger.warning("LLM debate failed, falling back to heuristic: %s", e)
+
+        # Fallback: score + noise
         score_a = self._compute_debate_score(hyp_a)
         score_b = self._compute_debate_score(hyp_b)
-        
-        # Add randomness to simulate debate variability
-        import random
-        debate_factor_a = random.uniform(0.8, 1.2)
-        debate_factor_b = random.uniform(0.8, 1.2)
-        
-        final_score_a = score_a * debate_factor_a
-        final_score_b = score_b * debate_factor_b
-        
-        return hyp_a.id if final_score_a > final_score_b else hyp_b.id
+        debate_factor_a = random.uniform(0.85, 1.15)
+        debate_factor_b = random.uniform(0.85, 1.15)
+        return hyp_a.id if score_a * debate_factor_a > score_b * debate_factor_b else hyp_b.id
+
+    async def _llm_debate(self, hyp_a: Hypothesis, hyp_b: Hypothesis) -> Optional[str]:
+        """
+        Use the LLM as scientific judge to compare two hypotheses.
+        Returns the ID of the winner or None if the call fails.
+        """
+        prompt = f"""
+        You are a senior scientific reviewer adjudicating a research hypothesis competition.
+        Compare the following two hypotheses and decide which is more scientifically promising.
+
+        Hypothesis A (ID: {hyp_a.id}):
+        - Title: {hyp_a.title}
+        - Mechanism: {_ensure_str(hyp_a.mechanism)[:300]}
+        - Predictions: {', '.join(hyp_a.testable_predictions[:3])}
+        - Novelty: {hyp_a.novelty_level}
+
+        Hypothesis B (ID: {hyp_b.id}):
+        - Title: {hyp_b.title}
+        - Mechanism: {_ensure_str(hyp_b.mechanism)[:300]}
+        - Predictions: {', '.join(hyp_b.testable_predictions[:3])}
+        - Novelty: {hyp_b.novelty_level}
+
+        Evaluate on: scientific rigor, novelty, experimental feasibility, and mechanistic specificity.
+        Return JSON: {{"winner_id": "<id of A or B>", "reasoning": "brief 1-sentence justification"}}
+        """
+        response = await _get_llm_completion(
+            self.llm_client,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            json_mode=True
+        )
+        data = _parse_json_response(response.choices[0].message.content)
+        raw_id = data.get("winner_id", "")
+        # Normalize: LLM might return "A", "B", or the actual UUID
+        if raw_id == hyp_a.id or raw_id.upper() == "A":
+            logger.debug("LLM judge chose A (%s): %s", hyp_a.id, data.get('reasoning', ''))
+            return hyp_a.id
+        elif raw_id == hyp_b.id or raw_id.upper() == "B":
+            logger.debug("LLM judge chose B (%s): %s", hyp_b.id, data.get('reasoning', ''))
+            return hyp_b.id
+        return None  # Ambiguous result — trigger fallback
     
     def _compute_debate_score(self, hypothesis: Hypothesis) -> float:
         """
@@ -1493,12 +1604,21 @@ class RankingAgent:
 
 
 class ProximityAgent:
-    """Builds proximity graph for hypothesis clustering"""
-    
+    """Builds proximity graph using semantic vector similarity (cosine) with Jaccard fallback."""
+
     def __init__(self):
         self.name = "Proximity"
         self.proximity_graph = defaultdict(lambda: defaultdict(float))
-    
+        self._embedding_model = None
+
+        # Try to load SentenceTransformer (already used by RAG system)
+        try:
+            from sentence_transformers import SentenceTransformer
+            self._embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            logger.info("ProximityAgent: SentenceTransformer loaded for vector similarity.")
+        except Exception as e:
+            logger.warning("ProximityAgent: SentenceTransformer unavailable, using Jaccard fallback. (%s)", e)
+
     async def compute_proximity(self, hypotheses: List[Hypothesis]) -> Dict[str, List[Tuple[str, float]]]:
         """
         Compute similarity between hypotheses.
@@ -1524,45 +1644,54 @@ class ProximityAgent:
     
     async def _compute_similarity(self, hyp_a: Hypothesis, hyp_b: Hypothesis) -> float:
         """
-        Compute similarity score between two hypotheses (0-1).
-        Based on: mechanism similarity, overlapping testable predictions, shared citations.
+        Compute semantic similarity score between two hypotheses (0–1).
+        Primary: cosine similarity of SentenceTransformer embeddings.
+        Fallback: weighted Jaccard over mechanism words + prediction overlap + citation overlap.
         """
-        
+        # --- Primary: vector similarity ---
+        if self._embedding_model is not None:
+            try:
+                import numpy as np
+                text_a = f"{hyp_a.title}. {_ensure_str(hyp_a.mechanism)} {_ensure_str(hyp_a.description)}"
+                text_b = f"{hyp_b.title}. {_ensure_str(hyp_b.mechanism)} {_ensure_str(hyp_b.description)}"
+
+                def _encode(texts):
+                    return self._embedding_model.encode(texts, convert_to_tensor=False)
+
+                embeddings = await asyncio.to_thread(_encode, [text_a, text_b])
+                emb_a, emb_b = embeddings[0], embeddings[1]
+
+                norm_a = np.linalg.norm(emb_a)
+                norm_b = np.linalg.norm(emb_b)
+                if norm_a > 0 and norm_b > 0:
+                    cos_sim = float(np.dot(emb_a, emb_b) / (norm_a * norm_b))
+                    # Cosine ∈ [-1, 1] → normalize to [0, 1]
+                    return (cos_sim + 1.0) / 2.0
+            except Exception as e:
+                logger.warning("Vector similarity failed, using Jaccard fallback: %s", e)
+
+        # --- Fallback: Jaccard-based heuristic ---
         similarity = 0.0
-        
-        # Text similarity (simple approach: shared words in mechanism)
-        mech_a = _ensure_str(hyp_a.mechanism).lower()
-        mech_b = _ensure_str(hyp_b.mechanism).lower()
-        
-        mech_a_words = set(mech_a.split())
-        mech_b_words = set(mech_b.split())
-        
-        if mech_a_words and mech_b_words:
-            shared = len(mech_a_words & mech_b_words)
-            total = len(mech_a_words | mech_b_words)
-            mechanism_sim = shared / total if total > 0 else 0.0
-            similarity += mechanism_sim * 0.5
-        
-        # Prediction overlap
-        pred_a_set = set(hyp_a.testable_predictions)
-        pred_b_set = set(hyp_b.testable_predictions)
-        
-        if pred_a_set and pred_b_set:
-            shared_preds = len(pred_a_set & pred_b_set)
-            max_preds = max(len(pred_a_set), len(pred_b_set))
-            pred_sim = shared_preds / max_preds if max_preds > 0 else 0.0
-            similarity += pred_sim * 0.3
-        
-        # Citation overlap
-        cite_a_set = set(hyp_a.cited_papers)
-        cite_b_set = set(hyp_b.cited_papers)
-        
-        if cite_a_set and cite_b_set:
-            shared_cites = len(cite_a_set & cite_b_set)
-            max_cites = max(len(cite_a_set), len(cite_b_set))
-            cite_sim = shared_cites / max_cites if max_cites > 0 else 0.0
-            similarity += cite_sim * 0.2
-        
+
+        mech_a = set(_ensure_str(hyp_a.mechanism).lower().split())
+        mech_b = set(_ensure_str(hyp_b.mechanism).lower().split())
+        if mech_a and mech_b:
+            shared = len(mech_a & mech_b)
+            total = len(mech_a | mech_b)
+            similarity += (shared / total if total > 0 else 0.0) * 0.5
+
+        pred_a = set(hyp_a.testable_predictions)
+        pred_b = set(hyp_b.testable_predictions)
+        if pred_a and pred_b:
+            max_p = max(len(pred_a), len(pred_b))
+            similarity += (len(pred_a & pred_b) / max_p) * 0.3
+
+        cite_a = set(hyp_a.cited_papers)
+        cite_b = set(hyp_b.cited_papers)
+        if cite_a and cite_b:
+            max_c = max(len(cite_a), len(cite_b))
+            similarity += (len(cite_a & cite_b) / max_c) * 0.2
+
         return min(1.0, max(0.0, similarity))
 
 
@@ -1950,34 +2079,46 @@ class ExperimentAgent:
                 code = content.split("```")[1].split("```")[0].strip()
             else:
                 code = content
-                
+
             if not code:
                 return "Failed to generate experimental code."
-                
-            print(f"      Executing experiment script...")
-            
+
+            # --- AST Safety Check before execution ---
+            is_safe, reason = _check_code_safety(code)
+            if not is_safe:
+                msg = f"⛔ Experiment blocked by safety filter: {reason}"
+                print(f"      {msg}")
+                hypothesis.experimental_results = msg
+                return msg
+
+            print(f"      ✓ Safety check passed. Executing experiment script...")
+
             import tempfile
             import subprocess
-            import sys
-            import os
-            
+
+            env = os.environ.copy()
+            # Strip sensitive env vars from subprocess context
+            for key in ('OPENAI_API_KEY', 'NCBI_API_KEY', 'ANTHROPIC_API_KEY'):
+                env.pop(key, None)
+
             with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
                 f.write(code)
                 script_path = f.name
-                
+
             try:
                 result = await asyncio.to_thread(
                     subprocess.run,
-                    [sys.executable, script_path], 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=30
+                    [sys.executable, '-S', script_path],  # -S: no site packages (extra isolation)
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=env
                 )
-                
+
                 output = result.stdout
                 if result.stderr:
                     output += f"\nErrors/Warnings:\n{result.stderr}"
-                    
+
                 if not output.strip():
                     output = "Script ran successfully but produced no output."
                     
@@ -2074,8 +2215,8 @@ class CoScientist:
         # Initialize all agents
         self.generation_agent = GenerationAgent(use_local_llm=use_local_llm)
         self.reflection_agent = ReflectionAgent(use_local_llm=use_local_llm)
-        self.ranking_agent = RankingAgent()
-        self.proximity_agent = ProximityAgent()
+        self.ranking_agent = RankingAgent(use_local_llm=use_local_llm)  # LLM-as-judge enabled
+        self.proximity_agent = ProximityAgent()  # Vector similarity enabled
         self.evolution_agent = EvolutionAgent(use_local_llm=use_local_llm)
         self.meta_review_agent = MetaReviewAgent()
         self.literature_agent = LiteratureAgent(use_local_llm=use_local_llm, enable_rag=enable_rag)

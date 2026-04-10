@@ -1,0 +1,1 @@
+# tests/ — NewAIScientist test suite

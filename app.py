@@ -1,5 +1,7 @@
 import streamlit as st
 import asyncio
+import concurrent.futures
+import threading
 import pandas as pd
 import json
 import os
@@ -18,9 +20,27 @@ null = None
 # Configure logging
 logger = logging.getLogger(__name__)
 
-from co_scientist import CoScientist, ResearchGoal, Hypothesis
+from co_scientist import CoScientist, ResearchGoal, Hypothesis, get_llm_usage_stats
+
+# ---------------------------------------------------------------------------
+# ASYNC HELPER — run coroutines safely in a dedicated thread with its own loop
+# ---------------------------------------------------------------------------
+
+def run_async(coro):
+    """
+    Run an async coroutine in a dedicated thread with its own event loop.
+    Avoids ProactorEventLoop conflicts on Windows and Streamlit's internal loop.
+    """
+    def _run():
+        return asyncio.run(coro)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_run)
+        return future.result()  # Blocks until coroutine completes
+
 
 class StreamlitRedirector:
+    """Capture stdout/stderr and render into a Streamlit code element."""
     def __init__(self, text_element):
         self.text_element = text_element
         self.buffer = ""
@@ -34,7 +54,10 @@ class StreamlitRedirector:
     def flush(self):
         pass
 
+
 CONFIG_FILE = "app_config.json"
+SESSIONS_DIR = "sessions"
+
 
 def load_config():
     """Load configuration from file"""
@@ -46,16 +69,50 @@ def load_config():
             st.error(f"Erreur lors du chargement de la config: {e}")
     return {}
 
+
 def save_config(params):
     """Save configuration to file"""
     try:
-        # Load existing to avoid overwriting everything if we only save partials
         config = load_config()
         config.update(params)
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Erreur lors de la sauvegarde de la config: {e}")
+
+
+def save_session(cs: CoScientist, goal_title: str) -> str:
+    """Persist current co-scientist state to a timestamped JSON file. Returns path."""
+    os.makedirs(SESSIONS_DIR, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_title = "".join(c if c.isalnum() else "_" for c in goal_title)[:40]
+    path = os.path.join(SESSIONS_DIR, f"session_{ts}_{safe_title}.json")
+    hypotheses = list(cs.context_memory.hypotheses.values())
+    data = {
+        "saved_at": datetime.now().isoformat(),
+        "goal": asdict(cs.context_memory.research_goal),
+        "literature_context": cs.context_memory.literature_context,
+        "hypotheses": [asdict(h) for h in hypotheses],
+        "tournament_history": [asdict(m) for m in cs.context_memory.tournament_history],
+        "meta_reviews": cs.context_memory.meta_reviews,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, default=str, ensure_ascii=False)
+    logger.info("Session saved: %s", path)
+    return path
+
+
+def list_sessions() -> list:
+    """Return list of saved session files, newest first."""
+    if not os.path.isdir(SESSIONS_DIR):
+        return []
+    files = [
+        os.path.join(SESSIONS_DIR, f)
+        for f in os.listdir(SESSIONS_DIR)
+        if f.endswith(".json") and f.startswith("session_")
+    ]
+    return sorted(files, reverse=True)
+
 
 # Load initial config
 config = load_config()
@@ -101,35 +158,34 @@ st.markdown("""
 # --- SIDEBAR: CONFIGURATION ---
 with st.sidebar:
     st.header("⚙️ Configuration")
-    
+
     # LLM Settings
     st.subheader("LLM Settings")
-    use_local_llm = st.checkbox("Utiliser un LLM local", 
+    use_local_llm = st.checkbox("Utiliser un LLM local",
                                 value=config.get("use_local_llm", True),
                                 key="persist_use_local_llm",
                                 on_change=lambda: save_config({"use_local_llm": st.session_state.persist_use_local_llm}))
-    
+
     if use_local_llm:
-        llm_base_url = st.text_input("URL du LLM", 
+        llm_base_url = st.text_input("URL du LLM",
                                    value=config.get("llm_base_url", "http://127.0.0.1:1234/v1"),
                                    key="persist_llm_base_url",
                                    on_change=lambda: save_config({"llm_base_url": st.session_state.persist_llm_base_url}))
-        llm_model_name = st.text_input("Nom du modèle", 
+        llm_model_name = st.text_input("Nom du modèle",
                                      value=config.get("llm_model_name", "openai/gpt-oss-20b"),
                                      key="persist_llm_model_name",
                                      on_change=lambda: save_config({"llm_model_name": st.session_state.persist_llm_model_name}))
-        
+
         # Mise à jour des variables d'environnement pour le backend
         os.environ["OPENAI_API_BASE"] = llm_base_url
         os.environ["OPENAI_API_KEY"] = "lm-studio"  # Dummy key for local
         os.environ["OPENAI_MODEL_NAME"] = llm_model_name
-        
+
         # BOUTON DE TEST DE CONNEXION
         if st.button("📡 Tester la connexion"):
             try:
                 import openai
                 client = openai.OpenAI(base_url=llm_base_url, api_key="lm-studio")
-                # Test simple : lister les modèles ou faire un petit chat
                 with st.spinner("Ping du serveur..."):
                     models = client.models.list()
                     st.success(f"Connexion réussie ! Serveur actif.")
@@ -140,63 +196,72 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Paramètres de Recherche")
-    num_hypotheses = st.slider("Nombre d'hypothèses", 3, 20, 
+    num_hypotheses = st.slider("Nombre d'hypothèses", 3, 20,
                                 value=config.get("num_hypotheses", 5),
                                 key="persist_num_hyp",
                                 on_change=lambda: save_config({"num_hypotheses": st.session_state.persist_num_hyp}))
-    num_iterations = st.slider("Nombre d'itérations", 1, 10, 
+    num_iterations = st.slider("Nombre d'itérations", 1, 10,
                                 value=config.get("num_iterations", 3),
                                 key="persist_num_iter",
                                 on_change=lambda: save_config({"num_iterations": st.session_state.persist_num_iter}))
-    
+
     st.subheader("Paramètres Sources")
-    max_papers = st.slider("Max Papiers/Source", 3, 100, 
+    max_papers = st.slider("Max Papiers/Source", 3, 100,
                             value=config.get("max_papers", 5),
                             key="persist_max_papers",
                             on_change=lambda: save_config({"max_papers": st.session_state.persist_max_papers}))
-    
+
     st.divider()
-    
+
     # RAG System Settings
-    enable_rag = st.checkbox("Activer RAG (téléchargement & analyse PDF)", 
+    enable_rag = st.checkbox("Activer RAG (téléchargement & analyse PDF)",
                               value=config.get("enable_rag", True),
                               key="persist_enable_rag",
                               on_change=lambda: save_config({"enable_rag": st.session_state.persist_enable_rag}),
                               help="Télécharge les PDFs et effectue une recherche sémantique avancée")
-    
+
     # Display RAG stats if available
     if 'results' in st.session_state and st.session_state.results is not None:
         try:
             rag_stats = st.session_state.results.literature_agent.get_rag_stats()
-
             if rag_stats['status'] == 'ready':
-                st.success(f"🧠 RAG actif: {rag_stats['total_chunks']} chunks indexés")
+                st.success(f"🧠 RAG actif: {rag_stats.get('total_chunks', 0)} chunks indexés")
             elif rag_stats['status'] == 'disabled':
                 st.info("ℹ️ RAG désactivé")
         except (AttributeError, KeyError):
-            pass  # Not initialized yet
-    
+            pass
+
     st.divider()
-    
+
+    # LLM Usage Stats
+    usage = get_llm_usage_stats()
+    if usage.get("total_calls", 0) > 0:
+        st.subheader("📊 Stats LLM")
+        st.metric("Appels LLM", usage["total_calls"])
+        st.metric("Tokens Consommés", f"{usage['total_tokens']:,}")
+        if usage.get("last_model"):
+            st.caption(f"Modèle: `{usage['last_model']}`")
+
+    st.divider()
+
     # Authentification PubMed / NCBI
     st.subheader("🔐 Auth PubMed (NCBI)")
     st.markdown("Requis pour augmenter la limite de requêtes (10/s) avec PubMed/PMC.")
-    entrez_email = st.text_input("Email Entrez", 
+    entrez_email = st.text_input("Email Entrez",
                                 value=config.get("entrez_email", "ai-scientist@example.com"),
                                 key="persist_entrez_email",
                                 on_change=lambda: save_config({"entrez_email": st.session_state.persist_entrez_email}))
-                                
-    ncbi_api_key = st.text_input("Clé API NCBI (optionnel)", 
+
+    ncbi_api_key = st.text_input("Clé API NCBI (optionnel)",
                                 type="password",
                                 value=config.get("ncbi_api_key", ""),
                                 key="persist_ncbi_api_key",
                                 on_change=lambda: save_config({"ncbi_api_key": st.session_state.persist_ncbi_api_key}))
-                                
-    # Set environ variables dynamically for backend components
+
     os.environ["ENTREZ_EMAIL"] = entrez_email
     if ncbi_api_key:
         os.environ["NCBI_API_KEY"] = ncbi_api_key
-        
+
     try:
         from Bio import Entrez
         Entrez.email = entrez_email
@@ -206,10 +271,28 @@ with st.sidebar:
         pass
 
     st.divider()
-    # st.info("AI Co-Scientist v1.3\nBased on Google DeepMind Research")
+
+    # Session persistence — load previous session
+    st.subheader("💾 Sessions Sauvegardées")
+    saved_sessions = list_sessions()
+    if saved_sessions:
+        session_labels = [os.path.basename(s) for s in saved_sessions]
+        selected_session = st.selectbox("Charger une session", ["(nouvelle session)"] + session_labels)
+        if st.button("📂 Charger") and selected_session != "(nouvelle session)":
+            session_path = saved_sessions[session_labels.index(selected_session)]
+            try:
+                with open(session_path, "r", encoding="utf-8") as f:
+                    _data = json.load(f)
+                st.success(f"Session chargée: {selected_session}")
+                st.session_state["loaded_session_data"] = _data
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erreur de chargement: {e}")
+    else:
+        st.caption("Aucune session sauvegardée.")
+
 
 # --- CONFIGURATION & SESSION STATE ---
-# Initialize session state for widgets if not present to avoid value/key conflicts
 if "persist_goal_title" not in st.session_state:
     st.session_state.persist_goal_title = config.get("goal_title", "Drug Repurposing for AML")
 if "persist_goal_domain" not in st.session_state:
@@ -217,7 +300,6 @@ if "persist_goal_domain" not in st.session_state:
 if "persist_goal_desc" not in st.session_state:
     st.session_state.persist_goal_desc = config.get("goal_desc", "Identify FDA-approved drugs that could be repurposed for acute myeloid leukemia (AML) treatment.")
 if "persist_sources" not in st.session_state:
-    # Bug 5 fix integration: resolve stale sources
     st.session_state.persist_sources = config.get("source_type", ["arxiv", "pubmed"])
 if "persist_constraints" not in st.session_state:
     st.session_state.persist_constraints = config.get("constraints", "Only FDA-approved drugs\nMust have mechanism documentation")
@@ -237,7 +319,6 @@ if 'is_running' not in st.session_state:
 
 # --- SECTION 1: DEFINITION DE L'OBJECTIF ---
 with st.expander("🎯 Définir l'Objectif de Recherche", expanded=not st.session_state.is_running):
-    # Appliquer les suggestions de l'Auto-détection AVANT que les widgets soient créés
     if "suggested_domain" in st.session_state:
         st.session_state.persist_goal_domain = st.session_state.suggested_domain
         del st.session_state.suggested_domain
@@ -246,68 +327,56 @@ with st.expander("🎯 Définir l'Objectif de Recherche", expanded=not st.sessio
         del st.session_state.suggested_sources
 
     col1, col2 = st.columns([1, 1])
-    
+
     with col1:
-        goal_title = st.text_input("Titre de la Recherche", 
+        goal_title = st.text_input("Titre de la Recherche",
                                  key="persist_goal_title",
                                  on_change=lambda: save_config({"goal_title": st.session_state.persist_goal_title}))
-        
-        # Domain Auto-detection
+
         col_dom, col_btn = st.columns([3, 1])
         with col_dom:
-            goal_domain = st.text_input("Domaine Scientifique", 
+            goal_domain = st.text_input("Domaine Scientifique",
                                       key="persist_goal_domain")
         with col_btn:
-            st.write("") # Spacer
+            st.write("")  # Spacer
             if st.button("🪄 Auto", help="Détecter le domaine et les sources via IA"):
                 with st.spinner("Analyse..."):
                     try:
-                        # Temporary CoScientist instance for analysis
-                        temp_cs = CoScientist(use_local_llm=use_local_llm, enable_rag=enable_rag) # Improvement 6
-                        # Improvement 5: Asyncio fix
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        analysis = loop.run_until_complete(temp_cs.analyze_research_description(st.session_state.persist_goal_desc))
-                        loop.close()
-                        
+                        temp_cs = CoScientist(use_local_llm=use_local_llm, enable_rag=enable_rag)
+                        analysis = run_async(temp_cs.analyze_research_description(st.session_state.persist_goal_desc))
                         if analysis:
-                            suggested_domains = ", ".join(analysis.get("domains", []))
-                            suggested_dbs = analysis.get("databases", [])
-                            
-                            # Stocker temporairement pour application au prochain rerun
-                            st.session_state.suggested_domain = suggested_domains
-                            st.session_state.suggested_sources = [s for s in suggested_dbs if s in ["arxiv", "pubmed", "biorxiv", "ieee_xplore", "scopus", "google_scholar", "semantic_scholar"]]
+                            st.session_state.suggested_domain = ", ".join(analysis.get("domains", []))
+                            st.session_state.suggested_sources = [
+                                s for s in analysis.get("databases", [])
+                                if s in ["arxiv", "pubmed", "biorxiv", "ieee_xplore", "scopus", "google_scholar", "semantic_scholar"]
+                            ]
                             st.rerun()
                     except Exception as e:
                         st.error(f"Erreur d'analyse: {e}")
-    
+
     with col2:
-        goal_desc = st.text_area("Description Détaillée", 
+        goal_desc = st.text_area("Description Détaillée",
                                height=100,
                                key="persist_goal_desc")
-        
-        # Dynamic Database Selection
+
         all_sources = ["arxiv", "pubmed", "biorxiv", "ieee_xplore", "scopus", "google_scholar", "semantic_scholar"]
-        # Bug 5: Logic handled by initialization above
-        selected_sources = st.multiselect("Bases de données pertinentes", 
+        selected_sources = st.multiselect("Bases de données pertinentes",
                                         options=all_sources,
                                         key="persist_sources",
                                         on_change=lambda: save_config({"source_type": st.session_state.persist_sources}))
 
-    constraints = st.text_area("Contraintes (une par ligne)", 
+    constraints = st.text_area("Contraintes (une par ligne)",
                              key="persist_constraints")
-    
+
     st.markdown("---")
-    submit_btn = st.button("Lancer la Recherche", type="primary", width="stretch")
+    submit_btn = st.button("Lancer la Recherche", type="primary", use_container_width=True)
+
 
 # --- LOGIQUE D'EXECUTION ---
 async def run_research_cycle():
-    # Initialisation
-    # Improvement 6: Pass enable_rag to CoScientist
     cs = CoScientist(use_local_llm=use_local_llm, enable_rag=enable_rag)
     st.session_state.co_scientist = cs
-    
-    # Setup Goal
+
     constraint_list = [c.strip() for c in constraints.split('\n') if c.strip()]
     await cs.initialize_research_goal(
         title=goal_title,
@@ -315,66 +384,62 @@ async def run_research_cycle():
         domain=goal_domain,
         constraints=constraint_list
     )
-    
-    # Container pour l'affichage progressif
+
     status_container = st.status("Démarrage du workflow...", expanded=True)
-    
+
     try:
-        # 0. Recherche Bibliographique
         status_container.write(f"📚 Agent Littérature : Recherche sur {','.join(selected_sources).upper()}...")
-        # selected_sources comes from the widget in the sidebar/expander
         papers = await cs.run_literature_search(max_results=max_papers, sources=selected_sources)
         if papers:
             status_container.write(f"✅ {len(papers)} papiers pertinents trouvés.")
         else:
             status_container.write("⚠️ Aucun papier trouvé ou erreur (vérifiez votre connexion/dépendances).")
 
-        # 1. Génération
         status_container.write("🔬 Agent Génération : Création des hypothèses (avec contexte)...")
         await cs.run_hypothesis_generation_cycle(num_hypotheses=num_hypotheses)
         status_container.write(f"✅ {num_hypotheses} hypothèses générées.")
-        
+
         for i in range(num_iterations):
             status_container.update(label=f"Itération {i+1}/{num_iterations} en cours...", state="running")
-            
-            # 2. Revue
+
             status_container.write(f"📝 Agent Réflexion : Revue critique (Cycle {i+1})...")
             await cs.run_review_cycle()
-            
-            # 3. Proximité
+
             status_container.write(f"🔗 Agent Proximité : Analyse des similarités (Cycle {i+1})...")
             await cs.proximity_agent.compute_proximity(list(cs.context_memory.hypotheses.values()))
-            
-            # 4. Tournoi
-            status_container.write(f"🏆 Agent Classement : Tournoi Elo (Cycle {i+1})...")
-            await cs.run_tournament_cycle(num_matches=num_hypotheses) # Un match par hypothèse environ
-            
-            # 5. Evolution
+
+            status_container.write(f"🏆 Agent Classement : Tournoi LLM-as-judge (Cycle {i+1})...")
+            await cs.run_tournament_cycle(num_matches=num_hypotheses)
+
             status_container.write(f"🧬 Agent Evolution : Amélioration des idées (Cycle {i+1})...")
             await cs.run_evolution_cycle()
-            
-            # 5.5 Experiment
+
             status_container.write(f"🧪 Agent Expérimentation : Tests empiriques (Cycle {i+1})...")
             await cs.run_experiment_cycle()
-            
-            # 6. Meta-Review
+
             status_container.write(f"🎯 Agent Meta-Review : Synthèse (Cycle {i+1})...")
             await cs.run_meta_review_cycle()
-            
+
+            # Auto-save after each iteration
+            try:
+                saved_path = save_session(cs, goal_title)
+                status_container.write(f"💾 Session sauvegardée: {os.path.basename(saved_path)}")
+            except Exception as save_err:
+                logger.warning("Auto-save failed: %s", save_err)
+
         status_container.update(label="Recherche terminée !", state="complete", expanded=False)
         st.session_state.results = cs
-        
+
     except Exception as e:
-        logger.error(f"Erreur critique dans run_research_cycle: {str(e)}", exc_info=True)
+        logger.error("Erreur critique dans run_research_cycle: %s", str(e), exc_info=True)
         status_container.update(label="Erreur critique", state="error")
         st.error(f"Une erreur fatale est survenue dans le workflow: {str(e)}")
-    
+
     if cs.generation_agent.last_error:
-        st.warning(f"⚠️ Note: Le générateur a rencontré une erreur et a utilisé la simulation : \n\n{cs.generation_agent.last_error}")
+        st.warning(f"⚠️ Note: Le générateur a rencontré une erreur et a utilisé la simulation :\n\n{cs.generation_agent.last_error}")
 
 
 if submit_btn:
-    # Save goal fields before running
     save_config({
         "goal_title": goal_title,
         "goal_domain": goal_domain,
@@ -382,39 +447,29 @@ if submit_btn:
         "constraints": constraints
     })
     st.session_state.is_running = True
-    
+
     with st.expander("📝 Logs d'exécution détaillés", expanded=True):
         log_container = st.empty()
-        
+
     redirector = StreamlitRedirector(log_container)
     old_stdout = sys.stdout
     old_stderr = sys.stderr
     sys.stdout = redirector
     sys.stderr = redirector
-    
-    # Standard asyncio execution in Streamlit
+
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # Propagation manual context to avoid "missing ScriptRunContext"
-        from streamlit.runtime.scriptrunner import get_script_run_ctx, add_script_run_ctx
-        ctx = get_script_run_ctx()
-        # Note: add_script_run_context doesn't easily apply to loop, 
-        # but the loop being in same thread as main script usually works
-        # if the script run context is already set.
-        
-        loop.run_until_complete(run_research_cycle())
+        # Safe asyncio execution via dedicated thread (avoids ProactorEventLoop conflicts on Windows)
+        run_async(run_research_cycle())
     except Exception as e:
         st.error(f"Erreur fatale: {e}")
-        logger.error(f"Fatal error: {e}", exc_info=True)
+        logger.error("Fatal error in submit handler: %s", e, exc_info=True)
     finally:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
-        loop.close()
-        
+
     st.session_state.is_running = False
     st.rerun()
+
 
 # --- SECTION 2: RESULTATS ---
 if st.session_state.results:

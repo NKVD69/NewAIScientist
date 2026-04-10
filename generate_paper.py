@@ -2,26 +2,81 @@ import os
 import sys
 import json
 import asyncio
+import unicodedata
 from fpdf import FPDF
 from co_scientist import _get_llm_completion, config, _parse_json_response
+
+
+def _sanitize_for_pdf(text: str) -> str:
+    """
+    Convert unicode text to a PDF-safe string, preserving as much content as possible.
+    Strategy:
+    1. Try latin-1 directly (fast path for pure ASCII/Western content)
+    2. NFKD normalize (é → e + combining accent, then drop combining chars) → better than direct encode
+    3. Map common scientific symbols to ASCII approximations
+    4. Last resort: replace with '?'
+    """
+    if not text:
+        return ""
+
+    # Common scientific symbol replacements
+    SYMBOL_MAP = {
+        '→': '->', '←': '<-', '↑': '^', '↓': 'v', '↔': '<->',
+        '±': '+/-', '≈': '~', '≤': '<=', '≥': '>=', '≠': '!=',
+        '×': 'x', '÷': '/', '∞': 'inf', '∑': 'sum', '∏': 'prod',
+        '∫': 'int', '∂': 'd', '∇': 'nabla', '√': 'sqrt',
+        'α': 'alpha', 'β': 'beta', 'γ': 'gamma', 'δ': 'delta',
+        'ε': 'epsilon', 'λ': 'lambda', 'μ': 'mu', 'π': 'pi',
+        'σ': 'sigma', 'τ': 'tau', 'φ': 'phi', 'ω': 'omega',
+        'Δ': 'Delta', 'Σ': 'Sigma', 'Ω': 'Omega', 'Γ': 'Gamma',
+        '\u2019': "'", '\u2018': "'", '\u201c': '"', '\u201d': '"',
+        '\u2013': '-', '\u2014': '--', '\u2026': '...',
+    }
+
+    for char, replacement in SYMBOL_MAP.items():
+        text = text.replace(char, replacement)
+
+    try:
+        text.encode('latin-1')
+        return text
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+
+    # NFKD decomposition: strips combining diacritics (é → e)
+    normalized = unicodedata.normalize('NFKD', text)
+    try:
+        normalized.encode('latin-1')
+        return normalized
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+
+    return normalized.encode('latin-1', errors='replace').decode('latin-1')
+
 
 class PaperPDF(FPDF):
     def header(self):
         self.set_font("Helvetica", "B", 14)
-        self.cell(0, 10, "Towards an AI Co-Scientist: Agentic Paper Generation", align="C", ln=True)
+        self.cell(0, 10, "Towards an AI Co-Scientist: Agentic Paper Generation", align="C", new_x="LMARGIN", new_y="NEXT")
         self.ln(5)
 
     def footer(self):
         self.set_y(-15)
+        self.set_font("Helvetica", "I", 8)
+        self.cell(0, 10, f"Page {self.page_no()}", align="C")
+
 
 def safe_write_multiline(pdf, text, line_height, width=90):
-    import textwrap
-    lines = textwrap.wrap(text, width=width, replace_whitespace=False)
-    for line in lines:
-        try:
-            pdf.cell(0, line_height, line.encode('latin-1', 'replace').decode('latin-1'), new_x="LMARGIN", new_y="NEXT")
-        except TypeError:
-            pdf.cell(0, line_height, line.encode('latin-1', 'replace').decode('latin-1'), ln=1)
+    """Write text to PDF with safe Unicode handling."""
+    sanitized = _sanitize_for_pdf(text)
+    try:
+        pdf.multi_cell(0, line_height, sanitized, new_x="LMARGIN", new_y="NEXT")
+    except Exception:
+        import textwrap
+        for line in textwrap.wrap(sanitized, width=width):
+            try:
+                pdf.cell(0, line_height, line, new_x="LMARGIN", new_y="NEXT")
+            except Exception:
+                pass
 
 async def draft_paper(llm_client, results_data):
     print("Drafting paper with LLM...")
