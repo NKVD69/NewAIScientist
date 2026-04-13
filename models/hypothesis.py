@@ -1,66 +1,51 @@
-"""
-Core hypothesis data structures for the NewAIScientist system.
-"""
-
-import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List
-
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+import uuid
 
 class HypothesisStatus(Enum):
-    """Hypothesis lifecycle states"""
     GENERATED = "generated"
-    UNDER_REVIEW = "under_review"
+    REFLECTED = "reflected"
     REVIEWED = "reviewed"
-    IN_TOURNAMENT = "in_tournament"
     RANKED = "ranked"
     EVOLVED = "evolved"
-    COMPLETED = "completed"
-
-
-@dataclass
-class ReviewCritique:
-    """Structure for review feedback"""
-    review_type: str  # initial, full, deep_verification, observation, simulation, recurrent
-    correctness_score: float  # 0-1
-    novelty_score: float      # 0-1
-    testability_score: float  # 0-1
-    quality_score: float      # 0-1
-    feedback: str
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-
+    VALIDATED = "validated"
+    REJECTED = "rejected"
 
 @dataclass
 class Hypothesis:
-    """Core hypothesis data structure"""
+    """Core hypothesis data model for NewAIScientist v3.0"""
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     title: str = ""
     description: str = ""
-    reasoning: str = ""       # Logic/papers that led to this hypothesis
-    mechanism: str = ""
+    mechanism: str = ""       # The "How" part of the hypothesis
+    novelty_level: str = "Medium"
+    elo_rating: float = 1200.0
+    
+    # Scientific components
     testable_predictions: List[str] = field(default_factory=list)
-    grounding_evidence: List[str] = field(default_factory=list)
-    experimental_results: str = ""
-
-    # Quality metrics
-    elo_rating: float = 1200.0          # Initial Elo rating
-    novelty_level: str = "unknown"      # low, medium, high, very_high
-
+    grounding_evidence: List[Dict] = field(default_factory=list)
+    cited_papers: List[str] = field(default_factory=list)
+    limitations: List[str] = field(default_factory=list)
+    
     # Lifecycle
     status: HypothesisStatus = HypothesisStatus.GENERATED
     creation_timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    reviews: List[ReviewCritique] = field(default_factory=list)
-
-    # Genealogy
-    parent_ids: List[str] = field(default_factory=list)
-    generation_method: str = "initial"  # initial, evolved, combined, inspired
-
-    # Citations
-    cited_papers: List[str] = field(default_factory=list)
-    limitations: List[str] = field(default_factory=list)
-
+    reviews: List[Dict] = field(default_factory=list)
+    adversarial_review: Optional[Dict] = None
+    
+    # Genealogy & Chaining
+    parent_id: Optional[str] = None
+    link_type: Optional[str] = None  # refines, refutes, supports
+    generation_method: str = "initial"
+    history: List[Dict] = field(default_factory=list)
+    
+    # Human Collaboration (Sprint 3)
+    scientist_notes: str = ""
+    human_feedback: List[Dict] = field(default_factory=list)
+    
+    metadata: Dict = field(default_factory=dict)
 
 @dataclass
 class ResearchGoal:
@@ -68,7 +53,41 @@ class ResearchGoal:
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     title: str = ""
     description: str = ""
-    domain: str = ""          # biomedicine, physics, chemistry, etc.
+    domain: str = ""
     preferences: Dict[str, Any] = field(default_factory=dict)
     constraints: List[str] = field(default_factory=list)
     creation_timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+
+@dataclass
+class ExperimentalProtocol:
+    """Formal experimental design"""
+    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    hypothesis_id: str = ""
+    title: str = ""
+    independent_variables: List[Dict] = field(default_factory=list)
+    dependent_variables: List[Dict] = field(default_factory=list)
+    control_variables: List[Dict] = field(default_factory=list)
+    experimental_groups: List[str] = field(default_factory=list)
+    control_group: str = ""
+    sample_size: int = 0
+    power_analysis: Dict = field(default_factory=dict)
+    code: str = ""  # Executable validation code
+
+@dataclass
+class StatisticalResult:
+    """Results from data analysis"""
+    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    protocol_id: str = ""
+    results: List[Dict] = field(default_factory=list)
+    interpretation: str = ""
+    visualizations: List[str] = field(default_factory=list)
+
+@dataclass
+class Manuscript:
+    """Scientific manuscript draft"""
+    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    title: str = ""
+    abstract: str = ""
+    sections: Dict[str, Dict] = field(default_factory=dict)
+    references: List[Dict] = field(default_factory=list)
+    status: str = "draft"
