@@ -10,28 +10,30 @@ This implementation includes:
 - Persistent context memory for iterative reasoning
 """
 
-import asyncio
-import hashlib
-import json
-import logging
-import os
-import random
-import uuid
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any
-
-# Defensive definitions for potential JS-style JSON/boolean errors
-true = True
-false = False
-null = None
-from dataclasses import dataclass, field, asdict
-from enum import Enum
-import heapq
-import math
-from collections import defaultdict
-import re
-
 import config
+from models import (
+    HypothesisStatus,
+    StudyPhase,
+    ReviewCritique,
+    Hypothesis,
+    ResearchGoal,
+    TournamentMatch,
+    ContextMemory
+)
+from agents import (
+    LiteratureAgent,
+    GenerationAgent,
+    ReflectionAgent,
+    RankingAgent,
+    ProximityAgent,
+    EvolutionAgent,
+    MetaReviewAgent,
+    GraphAgent,
+    ScopingAgent,
+    ProtocolAgent,
+    AnalysisAgent,
+    WritingAgent
+)
 
 logger = logging.getLogger(__name__)
 
@@ -179,93 +181,7 @@ except ImportError:
 # DATA STRUCTURES
 # ============================================================================
 
-class HypothesisStatus(Enum):
-    """Hypothesis lifecycle states"""
-    GENERATED = "generated"
-    UNDER_REVIEW = "under_review"
-    REVIEWED = "reviewed"
-    IN_TOURNAMENT = "in_tournament"
-    RANKED = "ranked"
-    EVOLVED = "evolved"
-    COMPLETED = "completed"
-
-
-@dataclass
-class ReviewCritique:
-    """Structure for review feedback"""
-    review_type: str  # initial, full, deep_verification, observation, simulation, recurrent
-    correctness_score: float  # 0-1
-    novelty_score: float  # 0-1
-    testability_score: float  # 0-1
-    quality_score: float  # 0-1
-    feedback: str
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-
-
-@dataclass
-class Hypothesis:
-    """Core hypothesis data structure"""
-    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    title: str = ""
-    description: str = ""
-    reasoning: str = ""  # New: Logic/papers that led to this hypothesis
-    mechanism: str = ""
-    testable_predictions: List[str] = field(default_factory=list)
-    grounding_evidence: List[str] = field(default_factory=list)
-    experimental_results: str = ""
-    
-    # Quality metrics
-    elo_rating: float = 1200.0  # Initial Elo rating
-    novelty_level: str = "unknown"  # low, medium, high, very_high
-    
-    # Lifecycle
-    status: HypothesisStatus = HypothesisStatus.GENERATED
-    creation_timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    reviews: List[ReviewCritique] = field(default_factory=list)
-    
-    # Genealogy
-    parent_ids: List[str] = field(default_factory=list)
-    generation_method: str = "initial"  # initial, evolved, combined, inspired
-    
-    # Citations
-    cited_papers: List[str] = field(default_factory=list)
-    limitations: List[str] = field(default_factory=list)
-
-
-@dataclass
-class ResearchGoal:
-    """Research goal specification from scientist"""
-    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    title: str = ""
-    description: str = ""
-    domain: str = ""  # biomedicine, physics, chemistry, etc.
-    preferences: Dict[str, Any] = field(default_factory=dict)
-    constraints: List[str] = field(default_factory=list)
-    creation_timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-
-
-@dataclass
-class TournamentMatch:
-    """Record of a pairwise hypothesis comparison"""
-    match_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    hypothesis_a_id: str = ""
-    hypothesis_b_id: str = ""
-    winner_id: str = ""
-    debate_summary: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-
-
-@dataclass
-class ContextMemory:
-    """Persistent memory of system state"""
-    research_goal: ResearchGoal = field(default_factory=ResearchGoal)
-    hypotheses: Dict[str, Hypothesis] = field(default_factory=dict)
-    tournament_history: List[TournamentMatch] = field(default_factory=list)
-    agent_performance_stats: Dict[str, Dict] = field(default_factory=dict)
-    iteration_count: int = 0
-    literature_context: List[Dict] = field(default_factory=list) # Stores retrieved papers
-    meta_reviews: List[Dict] = field(default_factory=list)  # Stores meta-review results
-    last_update: str = field(default_factory=lambda: datetime.now().isoformat())
+# Data structures are now imported from models package
 
 
 # ============================================================================
@@ -2223,6 +2139,12 @@ class CoScientist:
         self.graph_agent = GraphAgent(use_local_llm=use_local_llm)
         self.experiment_agent = ExperimentAgent(use_local_llm=use_local_llm)
         
+        # v3.0 New Agents
+        self.scoping_agent = ScopingAgent(use_local_llm=use_local_llm)
+        self.protocol_agent = ProtocolAgent(use_local_llm=use_local_llm)
+        self.analysis_agent = AnalysisAgent(use_local_llm=use_local_llm)
+        self.writing_agent = WritingAgent(use_local_llm=use_local_llm)
+        
         # Register agents with supervisor
         self.supervisor.register_agent(self.generation_agent)
         self.supervisor.register_agent(self.reflection_agent)
@@ -2233,6 +2155,12 @@ class CoScientist:
         self.supervisor.register_agent(self.literature_agent)
         self.supervisor.register_agent(self.graph_agent)
         self.supervisor.register_agent(self.experiment_agent)
+        
+        # Register v3.0 agents
+        self.supervisor.register_agent(self.scoping_agent)
+        self.supervisor.register_agent(self.protocol_agent)
+        self.supervisor.register_agent(self.analysis_agent)
+        self.supervisor.register_agent(self.writing_agent)
     
     async def initialize_research_goal(self, 
                                        title: str,
@@ -2423,69 +2351,143 @@ class CoScientist:
         print(f"✓ Completed {matches_conducted} tournament matches")
         return matches
     
-    async def run_evolution_cycle(self) -> List[Hypothesis]:
-        """Evolve top hypotheses"""
-        print(f"\n🧬 Evolving hypotheses...")
+    async def run_scoping_cycle(self) -> Dict:
+        """Run the research scoping phase"""
+        print(f"\n🔍 [Scoping Phase] Analyzing research goal and literature...")
         
-        # Get top hypotheses
-        top_hyps = sorted(
-            self.context_memory.hypotheses.values(),
-            key=lambda h: h.elo_rating,
-            reverse=True
-        )[:3]
-        
-        strategies = ["enhancement", "simplification", "out_of_box"]
-        evolved = []
-        
-        for hyp, strategy in zip(top_hyps, strategies):
-            new_hyp = await self.evolution_agent.evolve_hypothesis(hyp, strategy)
-            self.context_memory.hypotheses[new_hyp.id] = new_hyp
-            evolved.append(new_hyp)
-        
-        print(f"✓ Evolved {len(evolved)} hypotheses")
-        return evolved
-    
-    async def run_experiment_cycle(self) -> List[Hypothesis]:
-        """Run empirical experiments on top hypotheses"""
-        print(f"\n🧪 Running experiments on top hypotheses...")
-        top_hyps = sorted(
-            self.context_memory.hypotheses.values(),
-            key=lambda h: h.elo_rating,
-            reverse=True
-        )[:2]  # Test only the best 2 to save time and API costs
-        
-        for hyp in top_hyps:
-            await self.experiment_agent.run_experiment(hyp, self.context_memory.research_goal)
-            
-        print(f"✓ Completed {len(top_hyps)} experiments")
-        return top_hyps
-    
-    async def run_meta_review_cycle(self) -> Dict[str, Any]:
-        """Generate meta-review and research overview"""
-        print(f"\n🎯 Generating meta-review...")
-        
-        meta_review = await self.meta_review_agent.generate_meta_review(
-            list(self.context_memory.hypotheses.values()),
-            self.context_memory.tournament_history,
+        # 1. State of the Art
+        soa = await self.scoping_agent.analyze_state_of_art(
+            self.context_memory.literature_context,
             self.context_memory.research_goal
         )
+        self.context_memory.state_of_art = asdict(soa)
         
-        # Store in context memory for persistence
-        self.context_memory.meta_reviews.append(meta_review)
+        # 2. Research Questions
+        questions = await self.scoping_agent.generate_research_questions(
+            soa, self.context_memory.research_goal
+        )
+        self.context_memory.research_questions = questions
         
-        print(f"✓ Meta-review generated")
-        return meta_review
-    
+        # 3. Conceptual Framework
+        framework = await self.scoping_agent.build_conceptual_framework(
+            questions, self.context_memory.research_goal
+        )
+        self.context_memory.conceptual_framework = framework
+        
+        print(f"✓ Scoping completed: {len(questions)} research questions generated.")
+        return {"soa": soa, "questions": questions, "framework": framework}
+
+    async def run_protocol_cycle(self, hypothesis_id: str = None) -> Any:
+        """Design experimental protocol for a hypothesis"""
+        # If no hypothesis_id, take the top one
+        if not hypothesis_id:
+            top_hyps = sorted(
+                self.context_memory.hypotheses.values(),
+                key=lambda h: h.elo_rating,
+                reverse=True
+            )
+            if not top_hyps:
+                return None
+            hyp = top_hyps[0]
+        else:
+            hyp = self.context_memory.hypotheses.get(hypothesis_id)
+            
+        print(f"\n🧪 [Protocol Phase] Designing experiment for: {hyp.title}")
+        
+        protocol = await self.protocol_agent.design_experiment(hyp, self.context_memory.research_goal)
+        await self.protocol_agent.power_analysis(protocol)
+        await self.protocol_agent.generate_executable_code(protocol)
+        
+        self.context_memory.experimental_protocols[hyp.id] = protocol
+        print(f"✓ Protocol generated for {hyp.id}")
+        return protocol
+
+    async def run_analysis_cycle(self, hypothesis_id: str, file_path: str = None) -> Any:
+        """Run statistical analysis on a dataset for a hypothesis"""
+        hyp = self.context_memory.hypotheses.get(hypothesis_id)
+        protocol = self.context_memory.experimental_protocols.get(hypothesis_id)
+        
+        if not hyp:
+            return None
+        
+        pd_df = None
+        if file_path and os.path.exists(file_path):
+            dataset_info = await self.analysis_agent.load_csv(file_path)
+            self.context_memory.datasets[dataset_info.id] = dataset_info
+            pd_df = pd.read_csv(file_path)
+        
+        print(f"\n📊 [Analysis Phase] Analyzing data for: {hyp.title}")
+        
+        # If simulation code is available in protocol, we could run it here to get data
+        # For now, we'll assume the user provides a dataset or we use simulation
+        
+        # Mock analysis plan if none exists
+        plan = AnalysisPlan(primary_analysis=f"Test {hyp.title} effects")
+        
+        if pd_df is not None:
+            results = await self.analysis_agent.run_statistical_tests(pd_df, plan)
+            interpretation = await self.analysis_agent.interpret_results(results, hyp)
+            
+            self.context_memory.statistical_results.extend(results)
+            self.context_memory.interpretations[hyp.id] = interpretation
+        else:
+            print("   ⚠️ No dataset provided for analysis.")
+            results = []
+            interpretation = "Analysis skipped: No dataset."
+            
+        return {"results": results, "interpretation": interpretation}
+
+    async def run_writing_cycle(self) -> Any:
+        """Generate the final research paper"""
+        print(f"\n📝 [Writing Phase] Drafting scientific manuscript...")
+        
+        goal = self.context_memory.research_goal
+        
+        # Get top hypothesis for the paper focus
+        top_hyps = sorted(
+            self.context_memory.hypotheses.values(),
+            key=lambda h: h.elo_rating,
+            reverse=True
+        )
+        best_hyp = top_hyps[0] if top_hyps else None
+        
+        sections = {}
+        section_types = ["abstract", "introduction", "methods", "results", "discussion", "conclusion"]
+        
+        # Simple drafting loop
+        for stype in section_types:
+            context = {
+                "results": self.context_memory.statistical_results,
+                "literature": self.context_memory.literature_context[:3]
+            }
+            sec = await self.writing_agent.draft_section(stype, goal, best_hyp, context)
+            sections[stype] = sec
+            
+        manuscript = await self.writing_agent.compile_manuscript(
+            goal, sections, self.context_memory.literature_context[:10]
+        )
+        self.context_memory.manuscript = manuscript
+        
+        # Export default
+        self.writing_agent.export_to_latex(manuscript, f"research_paper_{goal.id}.tex")
+        self.writing_agent.export_to_docx(manuscript, f"research_paper_{goal.id}.docx")
+        
+        print(f"✓ Manuscript compiled and exported.")
+        return manuscript
+
     async def run_full_cycle(self, num_iterations: int = 3):
-        """Run complete co-scientist workflow"""
+        """Run complete co-scientist workflow (v3.0 Extended)"""
         print("\n" + "="*70)
-        print("🤖 NewAI Scientist WORKFLOW STARTED")
+        print("🤖 NewAI Scientist v3.0 WORKFLOW STARTED")
         print("="*70)
         
-        # Literature Search
+        # 1. Literature Search (Phase 2)
         await self.run_literature_search()
         
-        # Initial hypothesis generation
+        # 2. Scoping (Phase 1)
+        await self.run_scoping_cycle()
+        
+        # 3. Initial hypothesis generation (Phase 3)
         await self.run_hypothesis_generation_cycle(num_hypotheses=5)
         
         for iteration in range(num_iterations):
@@ -2508,14 +2510,21 @@ class CoScientist:
             # Evolution cycle
             await self.run_evolution_cycle()
             
-            # Experiment cycle
-            await self.run_experiment_cycle()
+            # Experiment cycle (V2 style)
+            # await self.run_experiment_cycle()
             
             # Meta-review
             meta_review = await self.run_meta_review_cycle()
             
             # Print status
             self._print_iteration_status(iteration + 1, meta_review)
+            
+        # 4. Experimental Design (Phase 4)
+        await self.run_protocol_cycle()
+        
+        # 5. Analysis (Phase 5) - Mock call (requires user data for real analysis)
+        # 6. Writing (Phase 6)
+        await self.run_writing_cycle()
         
         # Final summary
         await self._print_final_summary()

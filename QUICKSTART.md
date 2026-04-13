@@ -6,6 +6,7 @@
 - Python 3.9+
 - `pypdf`, `chromadb` for RAG system
 - `openai` and `streamlit` libraries
+- `ast` (standard library) for code safety checks
 - Recommended: Virtual Environment (.venv)
 
 ### Setup
@@ -23,6 +24,9 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # 4. (Optional) Start your local LLM server (LM Studio/Ollama)
+
+> [!TIP]
+> **Configuration Centralisée** : Le système utilise désormais un fichier `config.py` qui centralise tous les accès aux URLs et clés API. Vous pouvez également utiliser des variables d'environnement (`OPENAI_API_BASE`, `OPENAI_API_KEY`) pour écraser les valeurs par défaut.
 ```
 
 ### Run the App
@@ -447,8 +451,8 @@ A: Minimal - most time is spent in simulated debates. With a local LLM, it depen
 
 ---
 
-**Version**: 2.1  
-**Last Updated**: February 2026  
-**Status**: Ready for use (Hybrid Context + Paper Gen)
+**Version**: 2.2  
+**Last Updated**: Avril 2026  
+**Status**: Ready for use (Hybrid Context + Paper Gen + Experimentation)
 
 Happy Researching! 🔬

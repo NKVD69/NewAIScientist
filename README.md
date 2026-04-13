@@ -1,8 +1,8 @@
-# AI Co-Scientist : Système Multi-Agent pour la Découverte Scientifique (v2.1)
+# AI Co-Scientist : Système Multi-Agent pour la Découverte Scientifique (v2.2)
 
 Une implémentation du système **AI Co-Scientist**, inspirée par les travaux de **Sakana.ai** ("The AI Scientist") et le papier de **Google DeepMind** "Towards an AI co-scientist" (2025).
 
-> **Mise à jour Février 2026 (v2.1)** : Introduction du modèle **Hybrid Context** (CAG + GraphRAG) et génération automatisée d'articles scientifiques détaillés au format PDF.
+> **Mise à jour Avril 2026 (v2.2)** : Refonte modulaire de l'architecture, introduction de l'agent d'**Expérimentation** avec contrôle de sécurité AST, et optimisation du modèle **Hybrid Context**.
 
 ## 🎯 Vue d'ensemble
 
@@ -38,10 +38,27 @@ Ce système est une architecture multi-agent conçue pour :
     - *Enrichissement* (Ajout de preuves RAG).
     - *Pensée Divergente* (Exploration latérale).
 
-### 5. **Supervisor & Meta-Agents**
-- **Supervisor** : Orchestre le flux de travail asynchrone.
+### 5. **Experimentation Agent (Nouveau)**
+- Génère et exécute du code Python pour tester les prédictions des hypothèses.
+- **Sécurité** : Inclut une couche de vérification AST (`utils.safety`) pour bloquer les opérations système dangereuses avant l'exécution.
+
+### 6. **Supervisor & Meta-Agents**
+- **Supervisor** : Orchestre le flux de travail asynchrone et gère la file d'attente des tâches.
 - **Ranking Agent** : Organise des tournois Elo entre hypothèses.
 - **Meta-Review Agent** : Rédige le rapport final de la session.
+
+## 📁 Structure du Projet
+
+```text
+.
+├── agents/             # Wrappers pour les agents (Literature, Generation, Experiment, etc.)
+├── models/             # Modèles de données (Hypothesis, ResearchGoal, Memory)
+├── utils/              # Utilitaires (RAG, Sécurité AST, LLM helpers)
+├── tests/              # Suite de tests unitaires et d'intégration
+├── app.py              # Interface utilisateur Streamlit
+├── co_scientist.py     # Logique métier centrale et orchestrateur
+└── config.py           # Configuration centralisée du système
+```
 
 ## 🚀 Installation & Démarrage
 
@@ -102,5 +119,5 @@ Utilisez la commande suivante pour lancer l'application Streamlit :
 *   Basé sur le framework "AI Co-Scientist" de Google DeepMind (2025).
 *   Adapté et étendu avec une couche RAG locale pour une exécution autonome.
 
-**Version** : 2.1 (Février 2026)
-**Statut** : Stable & Étendu
+**Version** : 2.2 (Avril 2026)
+**Statut** : Stable & Modulaire
