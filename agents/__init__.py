@@ -4,8 +4,7 @@ v3.0 Fully modular agents (extracted from co_scientist.py monolith).
 """
 
 from .literature import LiteratureAgent
-from .generation import GenerationAgent
-from .reflection import ReflectionAgent
+from .generation import GenerationAgent, ReflectionAgent
 from .ranking import RankingAgent
 from .proximity import ProximityAgent
 from .evolution import EvolutionAgent
@@ -19,6 +18,9 @@ from .scoping import ScopingAgent
 from .protocol import ProtocolAgent
 from .analysis import AnalysisAgent
 from .writing import WritingAgent
+from .critic import DevilsAdvocateAgent
+from .chaining import HypothesisChainingAgent
+from .utils_agents import SearchAgent
 
 __all__ = [
     # Core agents (v2.2)
@@ -38,4 +40,7 @@ __all__ = [
     "ProtocolAgent",
     "AnalysisAgent",
     "WritingAgent",
+    "DevilsAdvocateAgent",
+    "HypothesisChainingAgent",
+    "SearchAgent"
 ]

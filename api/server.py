@@ -257,6 +257,10 @@ async def run_analysis(hypothesis_id: str, input: AnalysisInput):
         raise HTTPException(status_code=404, detail="Hypothesis not found")
     return result
 
+@app.patch("/hypothesis/{hypothesis_id}/notes")
+async def update_notes(hypothesis_id: str, notes: str):
+    hyp = await scientist.update_hypothesis(hypothesis_id, {"scientist_notes": notes})
+    return hyp
 
 @app.post("/workflow/writing")
 async def run_writing():

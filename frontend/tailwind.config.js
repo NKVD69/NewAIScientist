@@ -2,7 +2,7 @@
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,jsx}",
+    "./src/**/*.{js,ts,jsx,tsx}",
   ],
   darkMode: 'class',
   theme: {
@@ -49,6 +49,10 @@ export default {
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
       },
+      glass: {
+        background: 'rgba(255, 255, 255, 0.7)',
+        backdropFilter: 'blur(10px)',
+      }
     },
   },
   plugins: [],
