@@ -4,9 +4,20 @@ Provides a single source of truth for all environment-based settings.
 """
 
 import os
+import sys
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Fix Windows console encoding for Unicode (emoji in agent print() calls)
+if sys.platform == "win32":
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
 
 # =============================================================================
 # LLM Configuration

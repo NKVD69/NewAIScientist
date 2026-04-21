@@ -20,8 +20,9 @@ from models.hypothesis import (
     ResearchGoal,
     ExperimentalProtocol,
     Variable,
-    VariableRole
+    VariableRole,
 )
+from utils.llm import get_llm_completion, parse_json_response, ensure_str
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,6 @@ try:
     import openai
 except ImportError:
     openai = None
-
-from co_scientist import _get_llm_completion, _parse_json_response, _ensure_str
 
 
 class ProtocolAgent:
@@ -84,13 +83,13 @@ Return a JSON object with EXACTLY these keys:
 Return ONLY the JSON."""
 
         try:
-            response = await _get_llm_completion(
+            response = await get_llm_completion(
                 self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 json_mode=True,
             )
-            data = _parse_json_response(response.choices[0].message.content)
+            data = parse_json_response(response.choices[0].message.content)
             
             variables = []
             for v in data.get("variables", []):
@@ -149,13 +148,13 @@ Return a JSON object:
 Return ONLY JSON."""
 
         try:
-            response = await _get_llm_completion(
+            response = await get_llm_completion(
                 self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
                 json_mode=True,
             )
-            data = _parse_json_response(response.choices[0].message.content)
+            data = parse_json_response(response.choices[0].message.content)
             protocol.sample_size = data.get("estimated_sample_size", 0)
             protocol.power_analysis = data
             return data
@@ -187,7 +186,7 @@ The script should:
 Return ONLY the code block."""
 
         try:
-            response = await _get_llm_completion(
+            response = await get_llm_completion(
                 self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,

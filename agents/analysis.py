@@ -23,8 +23,9 @@ from models.hypothesis import (
     Hypothesis,
     StatisticalResult,
     DatasetInfo,
-    AnalysisPlan
+    AnalysisPlan,
 )
+from utils.llm import get_llm_completion, parse_json_response, ensure_str
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,6 @@ try:
     import openai
 except ImportError:
     openai = None
-
-from co_scientist import _get_llm_completion, _parse_json_response, _ensure_str
 
 
 class AnalysisAgent:
@@ -86,13 +85,13 @@ Keys: "name", "source" (must be {db_type}), "source_url", "description", "num_ro
 Return ONLY JSON."""
 
         try:
-            response = await _get_llm_completion(
+            response = await get_llm_completion(
                 self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 json_mode=True,
             )
-            data = _parse_json_response(response.choices[0].message.content)
+            data = parse_json_response(response.choices[0].message.content)
             if isinstance(data, dict):
                 data = next(iter(data.values())) if isinstance(next(iter(data.values())), list) else [data]
             
@@ -131,7 +130,7 @@ Missing Values:
 Provide a concise exploratory report."""
 
         try:
-            response = await _get_llm_completion(
+            response = await get_llm_completion(
                 self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
@@ -144,15 +143,12 @@ Provide a concise exploratory report."""
     async def run_statistical_tests(self, df: pd.DataFrame, plan: AnalysisPlan) -> List[StatisticalResult]:
         """
         Executes statistical tests as defined in the analysis plan.
-        In this version, we use the LLM to write the code and we attempt to execute it Safely.
+        Uses the LLM to write the code and attempts to execute it safely.
         """
         results = []
         if not self.llm_client:
             return results
 
-        # For the sake of the v3 upgrade, we'll demonstrate a logic where 
-        # we generate a specific test script for the provided data.
-        
         prompt = f"""Based on this Analysis Plan, write a Python script using scipy.stats to test the data in 'df'.
 Plan: {plan.primary_analysis}
 Tests: {plan.statistical_tests}
@@ -163,15 +159,14 @@ Return a JSON object with results for each test (statistic, p_value, significant
 Return ONLY JSON."""
 
         try:
-            response = await _get_llm_completion(
+            response = await get_llm_completion(
                 self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
                 json_mode=True,
             )
-            data = _parse_json_response(response.choices[0].message.content)
+            data = parse_json_response(response.choices[0].message.content)
             
-            # Map LLM results back to StatisticalResult models
             if isinstance(data, dict):
                 for test_name, res in data.items():
                     results.append(StatisticalResult(
@@ -212,7 +207,7 @@ Results:
 Conclusion: Does the evidence support or refute the hypothesis? Be rigorous."""
 
         try:
-            response = await _get_llm_completion(
+            response = await get_llm_completion(
                 self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,

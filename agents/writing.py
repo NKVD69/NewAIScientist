@@ -20,8 +20,9 @@ from models.hypothesis import (
     Manuscript,
     ManuscriptSection,
     StatisticalResult,
-    ExperimentalProtocol
+    ExperimentalProtocol,
 )
+from utils.llm import get_llm_completion, parse_json_response, ensure_str
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,6 @@ try:
     import openai
 except ImportError:
     openai = None
-
-from co_scientist import _get_llm_completion, _parse_json_response, _ensure_str
 
 
 class WritingAgent:
@@ -68,7 +67,7 @@ Use academic tone, citations like (Author et al., Year) if citations are provide
 Return ONLY the text content of the section."""
 
         try:
-            response = await _get_llm_completion(
+            response = await get_llm_completion(
                 self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,

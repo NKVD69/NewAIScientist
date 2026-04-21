@@ -1,5 +1,4 @@
 openai>=1.0.0
-streamlit>=1.31.0
 pandas>=2.0.0
 plotly>=5.0.0
 arxiv>=2.1.0
@@ -13,6 +12,14 @@ tiktoken>=0.5.0
 
 # PDF generation with Unicode support
 fpdf2>=2.7.4
+
+# API Server (v3.0)
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.7
+
+# DOCX export
+python-docx>=1.1.0
 
 # Async helpers for Streamlit + asyncio bridge
 # nest_asyncio>=1.6.0  # Optional: alternative to ThreadPoolExecutor approach

@@ -1,0 +1,326 @@
+{
+  "saved_at": "2026-04-19T21:43:05.859708",
+  "goal": {
+    "id": "da7240be",
+    "title": "Trisomie 21 et Alzheimer",
+    "description": "Implication de chromosome 21 dans la perturbation du microbiote intestinal et de la maladie d'Alzheimer",
+    "domain": "Genetics, Microbiome, Neurobiology, Alzheimer's Disease, Genomics",
+    "preferences": {},
+    "constraints": [],
+    "creation_timestamp": "2026-04-19T21:29:51.397415"
+  },
+  "literature_context": [],
+  "hypotheses": [
+    {
+      "id": "85c800d0",
+      "title": "Surexpression du gène APP sur le chromosome 21 amplifie la perméabilité intestinale, favorisant l’inflammation systémique et la pathologie amyloïde d’Alzheimer",
+      "description": "La duplication de APP (amyloid precursor protein) sur le chromosome 21 entraîne une production accrue d’APP dans les cellules épithéliales intestinales. Cette surcharge augmente la synthèse des protéines de jonction serrée, perturbant l’intégrité du bouchon intestinale et facilitant le passage transcellulaire d’endotoxines lipopolysaccharides (LPS). L’accumulation de LPS dans le sang déclenche une cascade inflammatoire systémique qui exacerbe la production d’amyloïde β dans le cerveau, accélérant l’étiologie Alzheimer.",
+      "reasoning": "Il est établi que les individus trisomiques 21 présentent une duplication du gène APP, responsable d’une surproduction d’amylée. De plus, des études démontrent qu’une perméabilité intestinale accrue conduit à la translocation de LPS et à l’inflammation chronique, associée à la neuroinflammation Alzheimer. Le lien entre dysfonctionnement intestinal, inflammation systémique et amyloïde β est donc plausible.",
+      "mechanism": "Duplication APP → augmentation de production d’APP dans le tube digestif APP supplémentaire modifie les protéines de jonction serrée (e.g., occludin, claudin) via signalisation intracellulaire Altération des jonctions → perméabilité intestinale ↑ LPS translocent à travers la mucosa → plasma LPS ↑ LPS activate Toll‑like receptor 4 (TLR4) dans le système immunitaire → cytokines IL‑6, TNF‑α ↑ Cytokines circulants ↔ infiltrate CNS via blood–brain barrier → microglial activation Microglia augmentée de production d’amyloïde β via APP processing",
+      "testable_predictions": [
+        "Mesure de la perméabilité intestinale (FITC‑dextran) sera supérieure chez trisomiques 21 vs. contrôles",
+        "Niveau plasma LPS et cytokines pro‑inflammatoires sera corrélé avec la charge génétique APP",
+        "En inhibant TLR4 pharmacologiquement, l’accumulation d’amyloïde β dans le cerveau sera réduite dans un modèle murin trisomique",
+        "Élevés niveaux de protéines de jonction serrée (occludin) détectables par immunofluorescence dans les intestins de trisomiques"
+      ],
+      "grounding_evidence": [
+        "Duplication du gène APP sur chr21 est bien documentée dans la littérature génétique du TDS",
+        "Perméabilité intestinale augmentée associe à endotoxémie et inflammation systémique",
+        "Inflammation chronique liée à microglial activation et amyloïde β accumulation"
+      ],
+      "experimental_results": "Experimental Results:\n\nErrors/Warnings:\nTraceback (most recent call last):\n  File \"C:\\Users\\Windows\\AppData\\Local\\Temp\\tmpdhefqfwl.py\", line 1, in <module>\n    import numpy as np\nModuleNotFoundError: No module named 'numpy'\n",
+      "elo_rating": 1217.402373648406,
+      "novelty_level": "high",
+      "status": "HypothesisStatus.REVIEWED",
+      "creation_timestamp": "2026-04-19T21:33:26.445514",
+      "reviews": [
+        {
+          "review_type": "llm-full",
+          "correctness_score": 0.7,
+          "novelty_score": 0.6,
+          "testability_score": 0.9,
+          "quality_score": 0.8,
+          "feedback": "The hypothesis is plausible but relies on several unproven links: APP overexpression in intestinal epithelium, direct modulation of tight‑junction proteins, and a causal chain from gut permeability to amyloid production. Existing evidence supports gut–brain axis inflammation, yet specific mechanistic pathways involving APP remain speculative. The proposed experiments (FITC‑dextran permeability, LPS/TLR4 blockade, immunofluorescence of junction proteins) are feasible and would provide valuable data, but the hypothesis should be refined to delineate which cellular signals mediate tight‑junction disruption and how systemic inflammation translates into amyloidogenic processing in neurons.",
+          "timestamp": "2026-04-19T21:36:00.643093"
+        }
+      ],
+      "parent_ids": [],
+      "generation_method": "llm-generated",
+      "cited_papers": [],
+      "limitations": [
+        "La causalité directe entre APP intestinal et perméabilité intestinale n’est pas encore confirmée expérimentalement",
+        "Variabilité génétique et environnementale dans la microbiome peut confondre les résultats",
+        "Les modèles murins trisomiques ne reproduisent pas entièrement l’hétérogénéité humaine"
+      ],
+      "linked_hypotheses": []
+    },
+    {
+      "id": "8cef3bab",
+      "title": "Surexpression de DYRK1A sur le chromosome 21 modifie la composition du microbiote intestinal, induisant une dysbiose qui favorise la neuroinflammation Alzheimer",
+      "description": "DYRK1A (dual‑specificity tyrosine‑phosphorylation kinase 1A) est triplement exprimé chez les individus trisomiques 21. Cette kinase régule l’expression de cytokines et des facteurs immunitaires dans le tractus gastro-intestinal, entraînant une modification du profil microbiotique. Une dysbiose caractérisée par une diminution des bactéries productrices d’acides gras à chaîne courte (SCFA) et une augmentation de bactérie pathogène pro‑inflammatoire augmente la production d’oxydants et stimule les microglia, accélérant l’accumulation amyloïde β.",
+      "reasoning": "DYRK1A est connu pour influencer le métabolisme immunitaire et la réponse inflammatoire. Des études montrent que la dysbiose intestinal modifie la production de SCFA, qui régulent la fonction microgliale. En outre, la surexpression de DYRK1A peut perturber la transcription des genes liés à l’adhésion mucosaire, favorisant une microbiome pathogène.",
+      "mechanism": "Surexpression DYRK1A → phosphorylation de facteurs transcriptionnels (e.g., NF‑κB) dans les cellules épithéliales intestinales Activation NF‑κB ↑ expression cytokines IL‑1β, IL‑6, TNF‑α Cytokines modulent la barrière mucosa et favorisent l’adhésion de bactéries pathogènes Dysbiose → réduction SCFA (butyrate) et augmentation des bactérie pro‑inflammatoires (e.g., Enterobacteriaceae) SCFA réduits diminuent le signal anti‑inflammation vers microglia Microglia activation ↑ production d’amyloïde β via APP processing",
+      "testable_predictions": [
+        "Profil microbiota de trisomiques 21 vs. contrôles montrera une diminution des Firmicutes (butyrate producers) et augmentation des Proteobacteria",
+        "Niveau SCFA dans le cecum sera corrélé inversely avec la charge DYRK1A",
+        "Inhibition de DYRK1A par kinase inhibitor réduira l’expression cytokines intestinales et restaurera la microbiome normale",
+        "Microglial activation (Iba1) sera diminuée après correction du microbiote via probiotiques ciblés"
+      ],
+      "grounding_evidence": [
+        "DYRK1A surexpression est associée à la neuroinflammation dans le TDS",
+        "Dysbiose intestinale liée à Alzheimer via SCFA diminution et microglial activation",
+        "Cytokines intestinales modulent la barrière mucosa et la microbiome"
+      ],
+      "experimental_results": "Experimental Results:\n\nErrors/Warnings:\nTraceback (most recent call last):\n  File \"C:\\Users\\Windows\\AppData\\Local\\Temp\\tmpokqymvww.py\", line 1, in <module>\n    import numpy as np\nModuleNotFoundError: No module named 'numpy'\n",
+      "elo_rating": 1213.1281248226185,
+      "novelty_level": "high",
+      "status": "HypothesisStatus.REVIEWED",
+      "creation_timestamp": "2026-04-19T21:33:26.445540",
+      "reviews": [
+        {
+          "review_type": "llm-full",
+          "correctness_score": 0.7,
+          "novelty_score": 0.6,
+          "testability_score": 0.8,
+          "quality_score": 0.7,
+          "feedback": "The hypothesis links DYRK1A overexpression in trisomy 21 to intestinal inflammation and microbiome dysbiosis, ultimately driving neuroinflammation and amyloid accumulation. While the proposed cascade is biologically plausible—DYRK1A can influence NF‑κB signaling, cytokine production, gut barrier integrity, and SCFA levels—the direct causal link between gut dysbiosis and Alzheimer pathology remains speculative. Existing studies have shown gut microbiota alterations in AD, but evidence connecting DYRK1A to these changes is sparse. The model would benefit from specifying which intestinal cell types are affected, quantifying the magnitude of cytokine shifts, and distinguishing whether observed microbiome changes are a consequence or a co‑factor of neurodegeneration. Experimental validation could involve conditional DYRK1A overexpression in mouse models, gut microbiota profiling, SCFA measurements, and assessment of microglial activation and amyloid deposition. Overall, the hypothesis is intriguing but requires more mechanistic detail and empirical grounding.",
+          "timestamp": "2026-04-19T21:36:26.073342"
+        }
+      ],
+      "parent_ids": [],
+      "generation_method": "llm-generated",
+      "cited_papers": [],
+      "limitations": [
+        "La causalité entre DYRK1A surexpression et dysbiose n’est pas encore démontrée dans des modèles in vivo",
+        "Variabilité individuelle de microbiome peut masquer les effets génétiques",
+        "Les interventions pharmacologiques ciblant DYRK1A peuvent avoir des effets secondaires non évalués"
+      ],
+      "linked_hypotheses": []
+    },
+    {
+      "id": "40621099",
+      "title": "Duplication du gène SERPINA4 sur le chromosome 21 altère l’activité protéase intestinale, modifiant la production de métabolites microbiotiques et régulant l’activation microgliale Alzheimer",
+      "description": "SERPINA4 (alpha‑1 antitrypsin) est triplement exprimé chez les trisomiques 21. Cette protéine inhibe les proteases du tractus intestinal, modifiant la dégradation des peptides microbiotiques et la production de métabolites comme l’acide lactique et le méthane. Une perturbation de ces métabolites influence la fonction microgliale via récepteurs GPR41/43, régulant la phagocytose amyloïde β. Ainsi, la duplication SERPINA4 contribue indirectement à l’accumulation d’amyloïde.",
+      "reasoning": "Alpha‑1 antitrypsin modifie le milieu protéolytique intestinal et influence les métabolites microbiotiques. Les récepteurs GPR41/43 sur microglia détectent ces métabolites, modulant la phagocytose amyloïde β. En TDS, duplication SERPINA4 peut déséquilibrer ce système.",
+      "mechanism": "Duplication SERPINA4 → augmentation de l’inhibition des proteases du microbiome (e.g., trypsin) Réduction de la dégradation peptides microbiotiques → changement profil métabolites (lactate, methane) Métabolite alteré modifie signal GPR41/43 sur microglia GPR41/43 activation ↓ phagocytose amyloïde β, ↑ accumulation Accumulation amyloïde β → neurodegeneration Alzheimer",
+      "testable_predictions": [
+        "Niveau d’inhibiteurs protease intestinal (SERPINA4) sera élevé chez trisomiques 21 vs. contrôles",
+        "Profil métabolites microbiotiques (lactate, methane) sera modifié et corrélé avec SERPINA4 expression",
+        "Activation GPR41/43 sur microglia mesurée par phosphorylation de downstream effectors sera réduite",
+        "Inhibition de SERPINA4 via antisense oligonucleotide restaurera la phagocytose amyloïde β dans modèles murins"
+      ],
+      "grounding_evidence": [
+        "Duplication SERPINA4 sur chr21 est confirmée dans la génétique du TDS",
+        "Protease inhibition modifie la production de métabolites microbiotiques",
+        "Récepteurs GPR41/43 régulent la phagocytose microglial amyloïde β"
+      ],
+      "experimental_results": "",
+      "elo_rating": 1169.4695015289756,
+      "novelty_level": "high",
+      "status": "HypothesisStatus.REVIEWED",
+      "creation_timestamp": "2026-04-19T21:33:26.445551",
+      "reviews": [
+        {
+          "review_type": "llm-full",
+          "correctness_score": 0.7,
+          "novelty_score": 0.6,
+          "testability_score": 0.8,
+          "quality_score": 0.7,
+          "feedback": "The hypothesis proposes a plausible link between SERPINA4 overexpression in trisomy 21 and altered gut protease activity, microbiome metabolite profiles, and microglial GPR41/43 signaling that ultimately affects amyloid‑β clearance. While the mechanistic chain is logically consistent, several assumptions remain unsubstantiated: (1) the extent to which SERPINA4 actually inhibits intestinal proteases in vivo; (2) whether changes in lactate or methane are sufficient to modulate GPR41/43 on microglia; and (3) the direct causal effect of these receptors on amyloid phagocytosis. Experimental validation would require multi‑layered studies—quantifying SERPINA4 levels, protease activity assays, metabolomic profiling in human samples or mouse models, and functional readouts of GPR41/43 signaling and amyloid clearance. Addressing these gaps will strengthen the hypothesis and clarify its novelty relative to existing literature on gut–brain axis and Alzheimer’s pathology.",
+          "timestamp": "2026-04-19T21:36:51.568706"
+        }
+      ],
+      "parent_ids": [],
+      "generation_method": "llm-generated",
+      "cited_papers": [],
+      "limitations": [
+        "Évidence directe entre SERPINA4 expression et métabolite profil intestinal reste limitée",
+        "Impact des métabolites microbiotiques sur microglia peut être modéré par d’autres facteurs",
+        "Interventions antisense ciblant SERPINA4 peuvent affecter l’hématopoiesis et la fonction immunitaire"
+      ],
+      "linked_hypotheses": []
+    },
+    {
+      "id": "d413f666",
+      "title": "Surexpression du gène APP sur le chromosome 21 amplifie la perméabilité intestinale, favorisant l’inflammation systémique et la pathologie amyloïde d’Alzheimer (Evolved: enhancement)",
+      "description": "La duplication de APP (amyloid precursor protein) sur le chromosome 21 entraîne une production accrue d’APP dans les cellules épithéliales intestinales. Cette surcharge augmente la synthèse des protéines de jonction serrée, perturbant l’intégrité du bouchon intestinale et facilitant le passage transcellulaire d’endotoxines lipopolysaccharides (LPS). L’accumulation de LPS dans le sang déclenche une cascade inflammatoire systémique qui exacerbe la production d’amyloïde β dans le cerveau, accélérant l’étiologie Alzheimer.",
+      "reasoning": "",
+      "mechanism": "Enhanced mechanism: Duplication APP → augmentation de production d’APP dans le tube digestif APP supplémentaire modifie les protéines de jonction serrée (e.g., occludin, claudin) via signalisation intracellulaire Altération des jonctions → perméabilité intestinale ↑ LPS translocent à travers la mucosa → plasma LPS ↑ LPS activate Toll‑like receptor 4 (TLR4) dans le système immunitaire → cytokines IL‑6, TNF‑α ↑ Cytokines circulants ↔ infiltrate CNS via blood–brain barrier → microglial activation Microglia augmentée de production d’amyloïde β via APP processing Additionally grounded by identifying supporting molecular pathways and experimental evidence from recent literature.",
+      "testable_predictions": [
+        "Mesure de la perméabilité intestinale (FITC‑dextran) sera supérieure chez trisomiques 21 vs. contrôles",
+        "Niveau plasma LPS et cytokines pro‑inflammatoires sera corrélé avec la charge génétique APP",
+        "En inhibant TLR4 pharmacologiquement, l’accumulation d’amyloïde β dans le cerveau sera réduite dans un modèle murin trisomique",
+        "Élevés niveaux de protéines de jonction serrée (occludin) détectables par immunofluorescence dans les intestins de trisomiques",
+        "Advanced prediction: Multi-dimensional experimental validation"
+      ],
+      "grounding_evidence": [
+        "Duplication du gène APP sur chr21 est bien documentée dans la littérature génétique du TDS",
+        "Perméabilité intestinale augmentée associe à endotoxémie et inflammation systémique",
+        "Inflammation chronique liée à microglial activation et amyloïde β accumulation",
+        "Additional pathway analysis",
+        "Cross-validation against recent meta-analyses"
+      ],
+      "experimental_results": "",
+      "elo_rating": 1200.0,
+      "novelty_level": "unknown",
+      "status": "HypothesisStatus.GENERATED",
+      "creation_timestamp": "2026-04-19T21:37:55.292191",
+      "reviews": [],
+      "parent_ids": [
+        "85c800d0"
+      ],
+      "generation_method": "evolved",
+      "cited_papers": [],
+      "limitations": [],
+      "linked_hypotheses": []
+    },
+    {
+      "id": "751a68cc",
+      "title": "DYRK1A overexpression on chromosome 21 alters gut microbiota, promoting neuroinflammation linked to Alzheimer’s disease",
+      "description": "Overexpressed DYRK1A in trisomy 21 upregulates NF‑κB signaling in intestinal epithelium, increasing pro‑inflammatory cytokines that disrupt the mucosal barrier. This leads to a shift toward pathogenic bacteria and reduced short‑chain fatty acid (SCFA) producers. Lower SCFAs diminish anti‑inflammatory signals to CNS microglia, resulting in heightened amyloid β production via APP processing.",
+      "reasoning": "",
+      "mechanism": "DYRK1A ↑ → NF‑κB activation → IL‑1β/IL‑6/TNF‑α ↑ → mucosal barrier dysfunction → dysbiosis (↓ SCFA producers, ↑ Enterobacteriaceae) → systemic inflammation → microglial activation → amyloid β accumulation",
+      "testable_predictions": [
+        "Individuals with trisomy 21 show higher intestinal NF‑κB activity and cytokine levels compared to controls.",
+        "Gut microbiota of trisomy 21 individuals has reduced Firmicutes (butyrate producers) and increased Enterobacteriaceae relative abundance.",
+        "Serum SCFA concentrations are lower in trisomy 21 subjects.",
+        "Peripheral inflammatory markers correlate with CSF amyloid β levels in trisomy 21 patients.",
+        "Inhibition of DYRK1A or NF‑κB signaling in a mouse model reduces gut dysbiosis and amyloid deposition."
+      ],
+      "grounding_evidence": [],
+      "experimental_results": "",
+      "elo_rating": 1200.0,
+      "novelty_level": "unknown",
+      "status": "HypothesisStatus.GENERATED",
+      "creation_timestamp": "2026-04-19T21:38:56.866044",
+      "reviews": [],
+      "parent_ids": [
+        "8cef3bab"
+      ],
+      "generation_method": "evolved-llm",
+      "cited_papers": [],
+      "limitations": [
+        "Causality between gut microbiota changes and CNS amyloid accumulation remains indirect; other genetic factors may contribute.",
+        "Human studies limited by variability in diet, medication, and comorbidities affecting microbiome.",
+        "Translating findings from mouse models to human Alzheimer pathology may be challenging due to species differences."
+      ],
+      "linked_hypotheses": []
+    },
+    {
+      "id": "5316327b",
+      "title": "Divergent: Duplication du gène SERPINA4 sur le chromosome 21 altère l’activité protéase intestinale, modifiant la production de métabolites microbiotiques et régulant l’activation microgliale Alzheimer",
+      "description": "Exploring lateral connections and unorthodox pathways inspired by: Duplication du gène SERPINA4 sur le chromosome 21 altère l’activité protéase intestinale, modifiant la production de métabolites microbiotiques et régulant l’activation microgliale Alzheimer. This hypothesis aggressively seeks to bridge disconnected domains.",
+      "reasoning": "",
+      "mechanism": "Divergent mechanism: Re-evaluating the core assumptions. Applying principles from far-field disciplines (e.g., astrophysics, ecology, computer science) to the target domain.",
+      "testable_predictions": [],
+      "grounding_evidence": [],
+      "experimental_results": "",
+      "elo_rating": 1200.0,
+      "novelty_level": "unknown",
+      "status": "HypothesisStatus.GENERATED",
+      "creation_timestamp": "2026-04-19T21:39:54.385309",
+      "reviews": [],
+      "parent_ids": [
+        "40621099"
+      ],
+      "generation_method": "evolved",
+      "cited_papers": [],
+      "limitations": [],
+      "linked_hypotheses": []
+    }
+  ],
+  "tournament_history": [
+    {
+      "match_id": "b338fc16",
+      "hypothesis_a_id": "40621099",
+      "hypothesis_b_id": "8cef3bab",
+      "winner_id": "8cef3bab",
+      "debate_summary": "Debate winner: Surexpression de DYRK1A sur le chromosome 21 modif... (Elo: 1200) defeated Duplication du gène SERPINA4 sur le chromosome 21 ... (Elo: 1200). ",
+      "timestamp": "2026-04-19T21:37:14.965474"
+    },
+    {
+      "match_id": "955d9a49",
+      "hypothesis_a_id": "8cef3bab",
+      "hypothesis_b_id": "40621099",
+      "winner_id": "8cef3bab",
+      "debate_summary": "Debate winner: Surexpression de DYRK1A sur le chromosome 21 modif... (Elo: 1216) defeated Duplication du gène SERPINA4 sur le chromosome 21 ... (Elo: 1184). ",
+      "timestamp": "2026-04-19T21:37:39.742062"
+    },
+    {
+      "match_id": "7d13d43c",
+      "hypothesis_a_id": "8cef3bab",
+      "hypothesis_b_id": "85c800d0",
+      "winner_id": "85c800d0",
+      "debate_summary": "Debate winner: Surexpression du gène APP sur le chromosome 21 amp... (Elo: 1200) defeated Surexpression de DYRK1A sur le chromosome 21 modif... (Elo: 1231). ",
+      "timestamp": "2026-04-19T21:37:55.290593"
+    }
+  ],
+  "meta_reviews": [
+    {
+      "timestamp": "2026-04-19T21:43:05.858921",
+      "total_hypotheses": 6,
+      "top_hypotheses": [
+        {
+          "id": "85c800d0",
+          "title": "Surexpression du gène APP sur le chromosome 21 amplifie la perméabilité intestinale, favorisant l’inflammation systémique et la pathologie amyloïde d’Alzheimer",
+          "elo_rating": 1217.402373648406,
+          "novelty": "high",
+          "num_reviews": 1
+        },
+        {
+          "id": "8cef3bab",
+          "title": "Surexpression de DYRK1A sur le chromosome 21 modifie la composition du microbiote intestinal, induisant une dysbiose qui favorise la neuroinflammation Alzheimer",
+          "elo_rating": 1213.1281248226185,
+          "novelty": "high",
+          "num_reviews": 1
+        },
+        {
+          "id": "d413f666",
+          "title": "Surexpression du gène APP sur le chromosome 21 amplifie la perméabilité intestinale, favorisant l’inflammation systémique et la pathologie amyloïde d’Alzheimer (Evolved: enhancement)",
+          "elo_rating": 1200.0,
+          "novelty": "unknown",
+          "num_reviews": 0
+        },
+        {
+          "id": "751a68cc",
+          "title": "DYRK1A overexpression on chromosome 21 alters gut microbiota, promoting neuroinflammation linked to Alzheimer’s disease",
+          "elo_rating": 1200.0,
+          "novelty": "unknown",
+          "num_reviews": 0
+        },
+        {
+          "id": "5316327b",
+          "title": "Divergent: Duplication du gène SERPINA4 sur le chromosome 21 altère l’activité protéase intestinale, modifiant la production de métabolites microbiotiques et régulant l’activation microgliale Alzheimer",
+          "elo_rating": 1200.0,
+          "novelty": "unknown",
+          "num_reviews": 0
+        }
+      ],
+      "common_strengths": [
+        "Diverse hypothesis portfolio maintained"
+      ],
+      "common_weaknesses": [
+        "Unreviewed hypotheses tend to rank lower - prioritize review",
+        "Lack of testable predictions is a weakness - add empirical angles"
+      ],
+      "tournament_patterns": {
+        "total_matches": 3,
+        "top_winner": "8cef3bab",
+        "wins_distribution": {
+          "8cef3bab": 2,
+          "85c800d0": 1
+        }
+      },
+      "suggested_improvements": [
+        "Review 3 unreviewed hypotheses",
+        "Add testable predictions to 1 hypotheses"
+      ],
+      "research_overview": "Research Overview for: Trisomie 21 et Alzheimer\nDomain: Genetics, Microbiome, Neurobiology, Alzheimer's Disease, Genomics\n\nTop Research Directions:\n\n1. Surexpression du gène APP sur le chromosome 21 amplifie la perméabilité intestinale, favorisant l’inflammation systémique et la pathologie amyloïde d’Alzheimer\n   Mechanism: Duplication APP → augmentation de production d’APP dans le tube digestif APP supplémentaire modifie ...\n   Elo Rating: 1217\n\n2. Surexpression de DYRK1A sur le chromosome 21 modifie la composition du microbiote intestinal, induisant une dysbiose qui favorise la neuroinflammation Alzheimer\n   Mechanism: Surexpression DYRK1A → phosphorylation de facteurs transcriptionnels (e.g., NF‑κB) dans les cellules...\n   Elo Rating: 1213\n\n3. Surexpression du gène APP sur le chromosome 21 amplifie la perméabilité intestinale, favorisant l’inflammation systémique et la pathologie amyloïde d’Alzheimer (Evolved: enhancement)\n   Mechanism: Enhanced mechanism: Duplication APP → augmentation de production d’APP dans le tube digestif APP sup...\n   Elo Rating: 1200\n",
+      "next_iterations_focus": [
+        "Evolve top 3 hypotheses: Surexpression du gène APP sur , Surexpression de DYRK1A sur le, Surexpression du gène APP sur ",
+        "Complete reviews for 3 hypotheses",
+        "Conduct tournament matches among top performers"
+      ]
+    }
+  ]
+}

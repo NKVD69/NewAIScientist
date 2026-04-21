@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 import plotly.express as px
 from dataclasses import asdict
+from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 
 # Defensive definitions for potential JS-style JSON/boolean errors
 true = True
@@ -31,7 +32,11 @@ def run_async(coro):
     Run an async coroutine in a dedicated thread with its own event loop.
     Avoids ProactorEventLoop conflicts on Windows and Streamlit's internal loop.
     """
+    ctx = get_script_run_ctx()
+
     def _run():
+        if ctx:
+            add_script_run_ctx(threading.current_thread(), ctx)
         return asyncio.run(coro)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -49,10 +54,17 @@ class StreamlitRedirector:
         self.buffer += msg
         if len(self.buffer) > 10000:
             self.buffer = self.buffer[-10000:]
-        self.text_element.code(self.buffer, language="log")
+        try:
+            self.text_element.code(self.buffer, language="log")
+        except Exception:
+            pass
 
     def flush(self):
         pass
+
+    def isatty(self):
+        """Return False to indicate this is not a real terminal."""
+        return False
 
 
 CONFIG_FILE = "app_config.json"

@@ -1,13 +1,13 @@
 {
-  "goal_title": "Trisomie 21 et Alzheimer",
-  "goal_domain": "Biomedicine/Genetics, Microbiology/Microbiome, Neurodegenerative diseases",
-  "goal_desc": "Implication de chromosome 21 dans la perturbation du microbiote intestinal et de la maladie d'Alzheimer",
+  "goal_title": "Down Syndrome and  Alzheimer",
+  "goal_domain": "Genetics, Microbiome, Neurobiology, Alzheimer's Disease, Genomics",
+  "goal_desc": "Involvement of chromosome 21 in the disruption of the gut microbiota and Alzheimer's disease",
   "constraints": "",
   "source_type": [
     "pubmed"
   ],
-  "num_hypotheses": 3,
-  "num_iterations": 1,
-  "max_papers": 10,
+  "num_hypotheses": 10,
+  "num_iterations": 10,
+  "max_papers": 50,
   "entrez_email": "nkvd69@gmail.com"
 }
