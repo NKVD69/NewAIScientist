@@ -49,18 +49,34 @@ class StreamlitRedirector:
     def __init__(self, text_element):
         self.text_element = text_element
         self.buffer = ""
+        self.last_update_time = 0.0
+        self.ctx = get_script_run_ctx()
 
     def write(self, msg):
+        if self.ctx and not get_script_run_ctx():
+            add_script_run_ctx(threading.current_thread(), self.ctx)
+            
         self.buffer += msg
         if len(self.buffer) > 10000:
             self.buffer = self.buffer[-10000:]
+        
+        # Debounce UI updates to max 10 FPS to avoid freezing Streamlit
+        import time
+        now = time.time()
+        if now - self.last_update_time > 0.1:
+            try:
+                self.text_element.code(self.buffer, language="log")
+                self.last_update_time = now
+            except Exception:
+                pass
+
+    def flush(self):
+        if self.ctx and not get_script_run_ctx():
+            add_script_run_ctx(threading.current_thread(), self.ctx)
         try:
             self.text_element.code(self.buffer, language="log")
         except Exception:
             pass
-
-    def flush(self):
-        pass
 
     def isatty(self):
         """Return False to indicate this is not a real terminal."""
@@ -469,6 +485,14 @@ if submit_btn:
     sys.stdout = redirector
     sys.stderr = redirector
 
+    # Re-route python logging to the redirector specifically
+    log_handler = logging.StreamHandler(redirector)
+    log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    log_handler.setFormatter(log_formatter)
+    logging.getLogger().addHandler(log_handler)
+    # Ensure root level is logging so we actually see INFO/WARNING
+    logging.getLogger().setLevel(logging.INFO)
+
     try:
         # Safe asyncio execution via dedicated thread (avoids ProactorEventLoop conflicts on Windows)
         run_async(run_research_cycle())
@@ -476,6 +500,10 @@ if submit_btn:
         st.error(f"Erreur fatale: {e}")
         logger.error("Fatal error in submit handler: %s", e, exc_info=True)
     finally:
+        # Flush whatever is left
+        redirector.flush()
+        # Clean up handlers
+        logging.getLogger().removeHandler(log_handler)
         sys.stdout = old_stdout
         sys.stderr = old_stderr
 

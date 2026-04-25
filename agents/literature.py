@@ -313,7 +313,8 @@ class LiteratureAgent:
             return []
             
         base_query = query + ' AND "free full text"[Filter]'
-        safe_query = re.sub(r'[^\w\s\-\(\)ANDOR"]', '', base_query)
+        # Preserve brackets for PubMed filters and apostrophes for diseases (e.g. Alzheimer's)
+        safe_query = re.sub(r'[^\w\s\-\(\)\[\]"\'’]', '', base_query)
         
         try:
             def fetch_pubmed():
