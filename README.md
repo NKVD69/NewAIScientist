@@ -51,13 +51,19 @@ Ce système est une architecture multi-agent conçue pour :
 
 ```text
 .
-├── agents/             # Wrappers pour les agents (Literature, Generation, Experiment, etc.)
+├── agents/             # Agents spécialisés (Literature, Generation, Experiment, etc.)
+├── api/                # Serveur FastAPI
+├── data/               # Données persistées (mappings, résultats archivés)
+│   └── results/        # Sorties JSON de sessions précédentes
+├── docs/               # Documentation (Architecture, Quickstart, papiers PDF)
+├── frontend/           # Frontend React + Vite + Tailwind
 ├── models/             # Modèles de données (Hypothesis, ResearchGoal, Memory)
-├── utils/              # Utilitaires (RAG, Sécurité AST, LLM helpers)
+├── scripts/            # Scripts ad-hoc et utilitaires (generate_paper, extract_*, debug_*)
 ├── tests/              # Suite de tests unitaires et d'intégration
+├── utils/              # Utilitaires (RAG, Sécurité AST, LLM helpers)
 ├── app.py              # Interface utilisateur Streamlit
-├── co_scientist.py     # Logique métier centrale et orchestrateur
-└── config.py           # Configuration centralisée du système
+├── co_scientist.py     # Orchestrateur principal
+└── config.py           # Configuration centralisée
 ```
 
 ## 🚀 Installation & Démarrage

@@ -1,7 +1,8 @@
-import os
-import json
-from typing import List, Dict, Optional
+import logging
+from typing import List, Dict
 from models import Hypothesis, ResearchGoal
+
+logger = logging.getLogger(__name__)
 
 class DevilsAdvocateAgent:
     """
@@ -16,7 +17,7 @@ class DevilsAdvocateAgent:
         """
         Attempts to refute the hypothesis by identifying gaps, biases, and counter-evidence.
         """
-        print(f"  👿 DevilsAdvocate is critiquing: {hypothesis.title}...")
+        logger.info("DevilsAdvocate is critiquing: %s", hypothesis.title)
         
         # System prompt for adversarial critique
         # This would be an LLM call in a real implementation

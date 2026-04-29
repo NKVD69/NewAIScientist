@@ -3,8 +3,10 @@ agents/ package — Specialized AI agents for scientific research.
 v3.0 Fully modular agents (extracted from co_scientist.py monolith).
 """
 
+from .base import BaseAgent
 from .literature import LiteratureAgent
-from .generation import GenerationAgent, ReflectionAgent
+from .generation import GenerationAgent
+from .reflection import ReflectionAgent
 from .ranking import RankingAgent
 from .proximity import ProximityAgent
 from .evolution import EvolutionAgent
@@ -23,6 +25,7 @@ from .chaining import HypothesisChainingAgent
 from .utils_agents import SearchAgent
 
 __all__ = [
+    "BaseAgent",
     # Core agents (v2.2)
     "LiteratureAgent",
     "GenerationAgent",

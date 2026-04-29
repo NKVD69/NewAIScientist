@@ -21,15 +21,11 @@ from typing import Any, Dict, List, Optional
 import config
 from models.hypothesis import ResearchGoal
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
 # Optional imports
-try:
-    import openai
-except ImportError:
-    openai = None
-
 try:
     import arxiv
 except ImportError:
@@ -50,23 +46,18 @@ except ImportError:
     RAGEngine = None
 
 
-class LiteratureAgent:
+class LiteratureAgent(BaseAgent):
     """Retrieves and analyzes relevant scientific literature"""
-    
+
+    name = "Literature"
+
     def __init__(self, use_local_llm: bool = True, enable_rag: bool = True):
-        self.name = "Literature"
+        super().__init__(use_local_llm=use_local_llm)
         self.papers_retrieved = 0
-        self.llm_client = None
         self.rag_engine = None
         self.enable_rag = enable_rag
         self.use_local_llm = use_local_llm
-        
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-            except Exception:
-                pass
-        
+
         # Initialize RAG system if enabled
         if enable_rag and RAGEngine:
             try:
@@ -136,7 +127,7 @@ class LiteratureAgent:
                 return None
             return content
         except Exception as e:
-            print(f"⚠ Query refinement failed: {e}")
+            logger.warning("Query refinement failed: %s", e)
             return None
 
     async def search_literature(self, goal: ResearchGoal, max_results: int = 5, sources: List[str] = None, iterations: int = 2) -> List[Dict]:
@@ -158,7 +149,7 @@ class LiteratureAgent:
         if not queries:
             queries = [goal.title]
             
-        print(f"   🔍 Expanded Search: {len(queries)} initial queries generated.")
+        logger.info("Expanded search: %d initial queries generated.", len(queries))
 
         current_query = queries[0]
 
@@ -168,12 +159,12 @@ class LiteratureAgent:
             iteration_papers = []
             for q in active_queries:
                 if i == 0:
-                    print(f"      - Query: {q}")
-                
+                    logger.info("  - Query: %s", q)
+
                 for source in sources:
                     source = source.lower()
                     if i > 0:
-                        print(f"📚 Searching {source.upper()} (Iter {i+1})...")
+                        logger.info("Searching %s (iter %d)...", source.upper(), i + 1)
                     
                     if source == "arxiv":
                         papers = await self._search_arxiv(q, max_results)
@@ -193,16 +184,16 @@ class LiteratureAgent:
                     known_titles.add(norm_t)
                     all_papers.append(p)
             
-            print(f"   Found {len(new_papers)} new unique papers.")
-            
+            logger.info("Found %d new unique papers.", len(new_papers))
+
             if not new_papers or i == iterations - 1:
                 break
-                
-            print("   🤔 Analyzing results to refine search...")
+
+            logger.info("Analyzing results to refine search...")
             refinement = await self._refine_query(goal, all_papers, active_queries[0])
             if refinement:
                 current_query = refinement
-                print(f"   🔄 Refined Query: {current_query}")
+                logger.info("Refined query: %s", current_query)
             else:
                 break
         
@@ -224,7 +215,7 @@ class LiteratureAgent:
             
         # Advanced Phase 2 CAG Synthesis
         if self.rag_engine and self.llm_client and goal:
-            print("   🧠 Synthesizing Semantic CAG Report from vector chunks...")
+            logger.info("Synthesizing semantic CAG report from vector chunks...")
             rag_query = f"{goal.title} {goal.description}"
             chunks = await self.rag_engine.query(rag_query, top_k=8)
             
@@ -258,7 +249,7 @@ class LiteratureAgent:
                     if synthesis:
                         return f"## Semantic CAG Synthesis\n\n{synthesis}\n\n"
                 except Exception as e:
-                    print(f"   ⚠ Semantic CAG Synthesis failed: {e}. Falling back to abstract list.")
+                    logger.warning("Semantic CAG synthesis failed: %s. Falling back to abstract list.", e)
             
         # Fallback to abstract concatenation (Legacy CAG)
         context_str = "## Key Findings from Literature (Abstracts)\n\n"
@@ -274,7 +265,7 @@ class LiteratureAgent:
 
     async def _search_arxiv(self, query: str, max_results: int) -> List[Dict]:
         if not arxiv:
-            print("⚠ `arxiv` library not found.")
+            logger.warning("`arxiv` library not found.")
             return []
             
         try:
@@ -300,16 +291,16 @@ class LiteratureAgent:
 
             results = await asyncio.to_thread(fetch_results)
             self.papers_retrieved += len(results)
-            print(f"✓ Found {len(results)} papers on ArXiv.")
+            logger.info("Found %d papers on ArXiv.", len(results))
             return results
-            
+
         except Exception as e:
-            print(f"⚠ ArXiv search failed: {e}")
+            logger.warning("ArXiv search failed: %s", e)
             return []
 
     async def _search_pubmed(self, query: str, max_results: int) -> List[Dict]:
         if not Entrez:
-            print("⚠ `biopython` library not found.")
+            logger.warning("`biopython` library not found.")
             return []
             
         base_query = query + ' AND "free full text"[Filter]'
@@ -379,20 +370,20 @@ class LiteratureAgent:
 
             results = await asyncio.to_thread(fetch_pubmed)
             self.papers_retrieved += len(results)
-            print(f"✓ Found {len(results)} papers on PubMed.")
+            logger.info("Found %d papers on PubMed.", len(results))
             return results
-            
+
         except Exception as e:
-            print(f"⚠ PubMed search failed: {e}")
+            logger.warning("PubMed search failed: %s", e)
             return []
 
     async def process_papers_with_rag(self, papers: List[Dict]) -> int:
         """Download and index papers using RAG system"""
         if not self.rag_engine:
-            print("ℹ RAG system not available. Skipping paper processing.")
+            logger.info("RAG system not available. Skipping paper processing.")
             return 0
-        
-        print(f"\n📥 Processing {len(papers)} papers with RAG system...")
+
+        logger.info("Processing %d papers with RAG system...", len(papers))
         chunks_indexed = await self.rag_engine.process_papers(papers)
         return chunks_indexed
     
@@ -407,7 +398,7 @@ class LiteratureAgent:
         if not chunks or not self.llm_client:
             return chunks[:top_k]
             
-        print(f"      🧠 Reranking {len(chunks)} chunks with LLM to find top {top_k}...")
+        logger.info("Reranking %d chunks with LLM to find top %d...", len(chunks), top_k)
         
         formatted_chunks = ""
         for i, chunk in enumerate(chunks):
@@ -448,7 +439,7 @@ class LiteratureAgent:
             return reranked[:top_k]
             
         except Exception as e:
-            print(f"      ⚠ Reranking failed: {e}. Falling back to default ordering.")
+            logger.warning("Reranking failed: %s. Falling back to default ordering.", e)
             return chunks[:top_k]
 
 

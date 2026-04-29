@@ -14,7 +14,6 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-import config
 from models.hypothesis import (
     Hypothesis,
     ResearchGoal,
@@ -23,27 +22,15 @@ from models.hypothesis import (
     VariableRole,
 )
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
-try:
-    import openai
-except ImportError:
-    openai = None
 
-
-class ProtocolAgent:
+class ProtocolAgent(BaseAgent):
     """Designs formal experimental protocols and analysis plans."""
 
-    def __init__(self, use_local_llm: bool = True):
-        self.name = "Protocol"
-        self.llm_client = None
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-                logger.info("ProtocolAgent initialized with LLM.")
-            except Exception as e:
-                logger.warning("ProtocolAgent LLM init failed: %s", e)
+    name = "Protocol"
 
     async def design_experiment(
         self, hypothesis: Hypothesis, goal: ResearchGoal

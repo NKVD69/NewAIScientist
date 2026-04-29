@@ -15,37 +15,23 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-import config
 from models.hypothesis import Hypothesis, ResearchGoal
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
-try:
-    import openai
-except ImportError:
-    openai = None
 
-
-class GenerationAgent:
+class GenerationAgent(BaseAgent):
     """Generates initial hypotheses and explores research space"""
-    
+
+    name = "Generation"
+
     def __init__(self, use_local_llm: bool = True):
-        self.name = "Generation"
+        super().__init__(use_local_llm=use_local_llm)
         self.generated_count = 0
-        self.llm_client = None
         self.last_error = None
         self.cag_context = None  # Injected by CoScientist after literature search
-        
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-                logger.info("Generation Agent initialized with local LLM connection.")
-            except Exception as e:
-                logger.warning("Could not connect to local LLM: %s", e)
-                self.llm_client = None
-        elif use_local_llm and not openai:
-            print("[WARN] `openai` library not found. Falling back to simulated generation.")
 
     async def generate_initial_hypotheses(self, 
                                         goal: ResearchGoal, 
@@ -53,32 +39,32 @@ class GenerationAgent:
                                         count: int = 5,
                                         rag_context: List[Dict] = None) -> List[Hypothesis]:
         """Generate initial hypotheses using LLM with Self-Refinement"""
-        print(f"💡 Generating {count} initial hypotheses with Self-Refinement...")
-        
+        logger.info("Generating %d initial hypotheses with self-refinement...", count)
+
         if self.llm_client:
             try:
                 # 1. Generate Drafts
-                print("   ✍️ Generating Drafts...")
+                logger.info("Generating drafts...")
                 draft_hypotheses = await self._generate_with_llm(goal, context_papers, count, rag_context)
-                
+
                 if not draft_hypotheses:
                     self.last_error = "LLM returned empty draft list"
                     return await self._generate_simulated(goal, count)
 
                 # 2. Refine Drafts (Self-Correction)
-                print("   🛡️ Critiquing and Refining Drafts...")
+                logger.info("Critiquing and refining drafts...")
                 refined_hypotheses = []
                 for draft in draft_hypotheses:
                     refined = await self._refine_hypothesis(draft, goal)
                     refined_hypotheses.append(refined)
-                
+
                 self.generated_count += len(refined_hypotheses)
                 return refined_hypotheses
 
             except Exception as e:
                 import traceback
                 self.last_error = f"LLM generation failed: {str(e)}\n{traceback.format_exc()}"
-                print(f"⚠ {self.last_error}")
+                logger.warning(self.last_error)
 
         if not self.last_error:
              self.last_error = "LLM client not initialized (check logs)"
@@ -132,7 +118,7 @@ class GenerationAgent:
             
             return draft
         except Exception as e:
-            print(f"⚠ Refinement failed for '{draft.title}': {e}")
+            logger.warning("Refinement failed for '%s': %s", draft.title, e)
             return draft
 
     def _build_llm_prompt(self, goal: ResearchGoal, context_papers: List[Dict], count: int, rag_context: List[Dict] = None) -> str:
@@ -209,7 +195,7 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
                 json_mode=True
             )
         except Exception as e:
-            print(f"⚠ LLM generation failed: {e}")
+            logger.warning("LLM generation failed: %s", e)
             return []
         
         content = response.choices[0].message.content
@@ -263,8 +249,8 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
                 ))
             return hypotheses
         except (json.JSONDecodeError, TypeError, KeyError) as e:
-            print(f"⚠ Error parsing LLM response: {e}")
-            print(f"  Raw response: {content}")
+            logger.warning("Error parsing LLM response: %s", e)
+            logger.debug("Raw response: %s", content)
             return []
 
     async def _generate_simulated(self, goal: ResearchGoal, count: int) -> List[Hypothesis]:

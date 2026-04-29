@@ -12,33 +12,21 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-import config
 from models.hypothesis import Hypothesis, ResearchGoal, ReviewCritique
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
-try:
-    import openai
-except ImportError:
-    openai = None
 
-
-class ReflectionAgent:
+class ReflectionAgent(BaseAgent):
     """Reviews hypotheses for correctness, quality, novelty, testability"""
-    
+
+    name = "Reflection"
+
     def __init__(self, use_local_llm: bool = True):
-        self.name = "Reflection"
+        super().__init__(use_local_llm=use_local_llm)
         self.reviews_completed = 0
-        self.llm_client = None
-        
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-                logger.info("Reflection Agent initialized with local LLM connection.")
-            except Exception as e:
-                logger.warning("Reflection Agent could not connect to local LLM: %s", e)
-                self.llm_client = None
 
     async def review_hypothesis(self, 
                                 hypothesis: Hypothesis,
@@ -57,7 +45,7 @@ class ReflectionAgent:
                     self.reviews_completed += 1
                     return review
             except Exception as e:
-                print(f"⚠ LLM review failed: {e}. Falling back to simulation.")
+                logger.warning("LLM review failed: %s. Falling back to simulation.", e)
 
         # Fallback to simulated review
         return await self._review_simulated(hypothesis, goal)
@@ -74,7 +62,7 @@ class ReflectionAgent:
                 json_mode=True
             )
         except Exception as e:
-            print(f"⚠ LLM review API call failed: {e}")
+            logger.warning("LLM review API call failed: %s", e)
             raise e
         
         data = parse_json_response(response.choices[0].message.content)

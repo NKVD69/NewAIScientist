@@ -14,7 +14,6 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-import config
 from models.hypothesis import (
     ResearchGoal,
     ResearchQuestion,
@@ -22,27 +21,15 @@ from models.hypothesis import (
     ScoredQuestion,
 )
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
-try:
-    import openai
-except ImportError:
-    openai = None
 
-
-class ScopingAgent:
+class ScopingAgent(BaseAgent):
     """Frames the research before hypothesis generation."""
 
-    def __init__(self, use_local_llm: bool = True):
-        self.name = "Scoping"
-        self.llm_client = None
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-                logger.info("ScopingAgent initialized with LLM.")
-            except Exception as e:
-                logger.warning("ScopingAgent LLM init failed: %s", e)
+    name = "Scoping"
 
     # ------------------------------------------------------------------
     # STATE OF THE ART

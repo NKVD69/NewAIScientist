@@ -742,7 +742,7 @@ if st.session_state.results:
             with st.spinner("Rédaction et compilation pdflatex en cours... (Patientez, cela nécessite plusieurs appels LLM)"):
                 try:
                     import subprocess
-                    result = subprocess.run([sys.executable, "generate_paper.py"], capture_output=True, text=True)
+                    result = subprocess.run([sys.executable, "scripts/generate_paper.py"], capture_output=True, text=True)
                     if result.returncode == 0:
                         st.success("✅ Article généré avec succès ! (ai_co_scientist_paper_detailed.pdf)")
                         # Offer download

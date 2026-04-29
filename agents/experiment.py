@@ -15,38 +15,28 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-import config
 from models.hypothesis import Hypothesis, ResearchGoal
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
 from utils.safety import check_code_safety
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
-try:
-    import openai
-except ImportError:
-    openai = None
 
-
-class ExperimentAgent:
+class ExperimentAgent(BaseAgent):
     """Agent that generates and runs python code to simulate experiments or analyze data"""
-    
+
+    name = "Experiment"
+
     def __init__(self, use_local_llm: bool = True):
-        self.name = "Experiment"
+        super().__init__(use_local_llm=use_local_llm)
         self.experiments_run = 0
-        self.llm_client = None
-        
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-            except Exception:
-                self.llm_client = None
 
     async def run_experiment(self, hypothesis: Hypothesis, goal: ResearchGoal) -> str:
         if not self.llm_client:
             return "Simulation skipped: No LLM available for experimental design."
             
-        print(f"   🧪 [Experiment Agent] Designing experiment for hypothesis: {hypothesis.title}")
+        logger.info("Designing experiment for hypothesis: %s", hypothesis.title)
         
         prompt = f"""
         Research Goal: {goal.title}
@@ -85,12 +75,12 @@ class ExperimentAgent:
             # --- AST Safety Check before execution ---
             is_safe, reason = check_code_safety(code)
             if not is_safe:
-                msg = f"⛔ Experiment blocked by safety filter: {reason}"
-                print(f"      {msg}")
+                msg = f"Experiment blocked by safety filter: {reason}"
+                logger.warning(msg)
                 hypothesis.experimental_results = msg
                 return msg
 
-            print(f"      ✓ Safety check passed. Executing experiment script...")
+            logger.info("Safety check passed. Executing experiment script...")
 
             import tempfile
             import subprocess

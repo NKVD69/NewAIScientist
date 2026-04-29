@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import numpy as np
-import config
 from models.hypothesis import (
     Hypothesis,
     StatisticalResult,
@@ -26,27 +25,15 @@ from models.hypothesis import (
     AnalysisPlan,
 )
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
-try:
-    import openai
-except ImportError:
-    openai = None
 
-
-class AnalysisAgent:
+class AnalysisAgent(BaseAgent):
     """Explores data and performs statistical analysis."""
 
-    def __init__(self, use_local_llm: bool = True):
-        self.name = "Analysis"
-        self.llm_client = None
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-                logger.info("AnalysisAgent initialized with LLM.")
-            except Exception as e:
-                logger.warning("AnalysisAgent LLM init failed: %s", e)
+    name = "Analysis"
 
     # ------------------------------------------------------------------
     # DATA LOADING & PUBLIC DBs
