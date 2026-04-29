@@ -9,6 +9,56 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 
+class TestNormalizeArxivUrl:
+    """Tests for the URL normalisation helper."""
+
+    def test_abs_url_unchanged(self):
+        from rag_system import _normalize_arxiv_url
+        url = "https://arxiv.org/abs/2103.12345"
+        assert _normalize_arxiv_url(url) == url
+
+    def test_pdf_url_converted_to_abs(self):
+        from rag_system import _normalize_arxiv_url
+        assert _normalize_arxiv_url("https://arxiv.org/pdf/2103.12345.pdf") == \
+               "https://arxiv.org/abs/2103.12345"
+
+    def test_pdf_url_without_suffix_converted(self):
+        from rag_system import _normalize_arxiv_url
+        assert _normalize_arxiv_url("https://arxiv.org/pdf/2103.12345") == \
+               "https://arxiv.org/abs/2103.12345"
+
+    def test_versioned_pdf_url(self):
+        from rag_system import _normalize_arxiv_url
+        assert _normalize_arxiv_url("https://arxiv.org/pdf/2103.12345v2.pdf") == \
+               "https://arxiv.org/abs/2103.12345v2"
+
+    def test_arxiv_shorthand(self):
+        from rag_system import _normalize_arxiv_url
+        assert _normalize_arxiv_url("arxiv:2103.12345") == \
+               "https://arxiv.org/abs/2103.12345"
+
+    def test_http_abs_normalised_to_https(self):
+        from rag_system import _normalize_arxiv_url
+        assert _normalize_arxiv_url("http://arxiv.org/abs/2103.12345") == \
+               "https://arxiv.org/abs/2103.12345"
+
+    def test_non_arxiv_url_unchanged(self):
+        from rag_system import _normalize_arxiv_url
+        url = "https://pubmed.ncbi.nlm.nih.gov/38218645/"
+        assert _normalize_arxiv_url(url) == url
+
+    def test_abs_and_pdf_same_paper_id(self):
+        """The abs and pdf variants of the same paper must yield the same paper_id."""
+        from rag_system import _url_to_paper_id
+        assert _url_to_paper_id("https://arxiv.org/abs/2103.12345") == \
+               _url_to_paper_id("https://arxiv.org/pdf/2103.12345.pdf")
+
+    def test_different_papers_different_ids(self):
+        from rag_system import _url_to_paper_id
+        assert _url_to_paper_id("https://arxiv.org/abs/2103.12345") != \
+               _url_to_paper_id("https://arxiv.org/abs/2103.99999")
+
+
 class TestRAGEngine:
     """Test RAGEngine with mocked dependencies."""
 
@@ -56,6 +106,39 @@ class TestRAGEngine:
         # Second indexing — should skip (dedup)
         chunks_2 = asyncio.run(engine.process_papers([paper]))
         assert chunks_2 == 0, "Second indexing should be skipped by dedup logic"
+
+    def test_is_paper_indexed_false_when_not_present(self):
+        engine = self._make_engine()
+        engine.collection.get.return_value = {"ids": []}
+        assert engine.is_paper_indexed("https://arxiv.org/abs/2103.12345") is False
+
+    def test_is_paper_indexed_true_when_present(self):
+        engine = self._make_engine()
+        engine.collection.get.return_value = {"ids": ["abc123_chunk_0"]}
+        assert engine.is_paper_indexed("https://arxiv.org/abs/2103.12345") is True
+
+    def test_is_paper_indexed_normalises_url(self):
+        """abs URL and pdf URL for the same paper must both report indexed."""
+        from rag_system import _url_to_paper_id
+        engine = self._make_engine()
+        pdf_url = "https://arxiv.org/pdf/2103.12345.pdf"
+        abs_url = "https://arxiv.org/abs/2103.12345"
+        captured = {}
+
+        def capture_get(**kwargs):
+            captured["where"] = kwargs.get("where", {})
+            return {"ids": ["dummy_id"]}
+
+        engine.collection.get.side_effect = capture_get
+        engine.is_paper_indexed(pdf_url)
+        id_from_pdf = captured["where"].get("paper_id")
+
+        engine.is_paper_indexed(abs_url)
+        id_from_abs = captured["where"].get("paper_id")
+
+        assert id_from_pdf == id_from_abs, (
+            "Both URL variants should resolve to the same paper_id"
+        )
 
     def test_get_stats_returns_status(self):
         """get_stats() should return a dict with 'status' key."""

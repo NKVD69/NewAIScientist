@@ -17,6 +17,50 @@ import config
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# URL normalisation helpers
+# ---------------------------------------------------------------------------
+
+def _normalize_arxiv_url(url: str) -> str:
+    """
+    Canonicalise any ArXiv URL variant to ``https://arxiv.org/abs/<id>``.
+
+    Handled inputs:
+      - https://arxiv.org/abs/2103.12345
+      - https://arxiv.org/abs/2103.12345v2
+      - https://arxiv.org/pdf/2103.12345.pdf
+      - https://arxiv.org/pdf/2103.12345v2.pdf
+      - http://arxiv.org/abs/...
+      - arxiv:2103.12345
+      - plain ArXiv IDs embedded in other URLs
+
+    Non-ArXiv URLs are returned unchanged.
+    """
+    url = url.strip()
+
+    # arxiv:<id> shorthand
+    if url.lower().startswith("arxiv:"):
+        arxiv_id = url.split(":", 1)[1].strip()
+        return f"https://arxiv.org/abs/{arxiv_id}"
+
+    if "arxiv.org" not in url:
+        return url
+
+    # Extract the ArXiv ID from /abs/ or /pdf/ paths
+    match = re.search(r"arxiv\.org/(?:abs|pdf)/([^\s?#]+?)(?:\.pdf)?$", url, re.IGNORECASE)
+    if match:
+        arxiv_id = match.group(1)
+        return f"https://arxiv.org/abs/{arxiv_id}"
+
+    # Fallback: return as-is
+    return url
+
+
+def _url_to_paper_id(url: str) -> str:
+    """Return a short, stable hex ID derived from the *normalised* URL."""
+    return hashlib.md5(_normalize_arxiv_url(url).encode()).hexdigest()[:16]
+
 # PDF and text processing
 try:
     import pypdf
@@ -70,8 +114,8 @@ class PDFDownloader:
         self.cache_dir.mkdir(exist_ok=True)
         
     def _get_cache_path(self, url: str) -> Path:
-        """Generate cache file path from URL"""
-        url_hash = hashlib.md5(url.encode()).hexdigest()
+        """Generate cache file path from URL (keyed on the normalised URL)."""
+        url_hash = hashlib.md5(_normalize_arxiv_url(url).encode()).hexdigest()
         return self.cache_dir / f"{url_hash}.pdf"
     
     async def download_arxiv_pdf(self, paper_url: str) -> Optional[Path]:
@@ -118,7 +162,7 @@ class PDFDownloader:
             return cache_path
             
         except Exception as e:
-            print(f"⚠ Failed to download ArXiv PDF: {e}")
+            logger.warning("Failed to download ArXiv PDF: %s", e)
             return None
     
     async def _get_pmcid_from_pmid(self, pmid: str) -> Optional[str]:
@@ -149,7 +193,7 @@ class PDFDownloader:
         # Format: https://pubmed.ncbi.nlm.nih.gov/38218645/
         pmid_match = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", paper_url)
         if not pmid_match:
-            print(f"ℹ Could not extract PMID from {paper_url}")
+            logger.info("Could not extract PMID from %s", paper_url)
             return None
             
         pmid = pmid_match.group(1)
@@ -157,7 +201,7 @@ class PDFDownloader:
         # Get PMCID
         pmcid = await self._get_pmcid_from_pmid(pmid)
         if not pmcid:
-            print(f"ℹ No PMCID found for PMID {pmid} (Paper may not be Open Access)")
+            logger.info("No PMCID found for PMID %s (paper may not be Open Access)", pmid)
             return None
             
         # Construct PMC XML download using Entrez
@@ -193,7 +237,7 @@ class PDFDownloader:
                         text_content = "\n\n".join(paragraphs)
 
                     if not text_content.strip():
-                        print(f"ℹ No text content found in XML for {pmid}")
+                        logger.info("No text content found in XML for PMID %s", pmid)
                         return None
 
                     with open(cache_path, 'w', encoding='utf-8') as out_file:
@@ -201,13 +245,13 @@ class PDFDownloader:
 
                     return cache_path
                 except Exception as e:
-                    print(f"⚠ Failed to parse PMC XML for {pmid}: {e}")
+                    logger.warning("Failed to parse PMC XML for PMID %s: %s", pmid, e)
                     return None
 
             return await asyncio.to_thread(download)
 
         except Exception as e:
-            print(f"⚠ Failed to download PMC text for {pmid}: {e}")
+            logger.warning("Failed to download PMC text for PMID %s: %s", pmid, e)
             return None
     
     async def download_paper(self, paper: Dict) -> Optional[Path]:
@@ -228,7 +272,7 @@ class DocumentProcessor:
     
     def __init__(self):
         if not pypdf:
-            print("⚠ pypdf not installed. PDF processing disabled.")
+            logger.warning("pypdf not installed — PDF processing disabled.")
     
     async def extract_text(self, file_path: Path) -> Optional[str]:
         """Extract all text from PDF or TXT"""
@@ -257,7 +301,7 @@ class DocumentProcessor:
                 return None
                 
         except Exception as e:
-            print(f"⚠ Failed to extract text from {file_path.name}: {e}")
+            logger.warning("Failed to extract text from %s: %s", file_path.name, e)
             return None
     
     def _clean_text(self, text: str) -> str:
@@ -408,11 +452,11 @@ class RAGEngine:
         self.embedding_model = None
         if SentenceTransformer:
             try:
-                print("📥 Loading embedding model (first run may take a minute)...")
+                logger.info("Loading embedding model (first run may take a moment)...")
                 self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-                print("✓ Embedding model loaded")
+                logger.info("Embedding model loaded.")
             except Exception as e:
-                print(f"⚠ Failed to load embedding model: {e}")
+                logger.warning("Failed to load embedding model: %s", e)
         
         # Initialize vector store
         self.chroma_client = None
@@ -427,60 +471,64 @@ class RAGEngine:
                     name=self.collection_name,
                     metadata={"description": "Scientific papers for RAG"}
                 )
-                print(f"✓ Vector database initialized: {self.collection.count()} chunks indexed")
+                logger.info("Vector database initialised: %d chunks indexed.", self.collection.count())
             except Exception as e:
-                print(f"⚠ Failed to initialize ChromaDB: {e}")
+                logger.warning("Failed to initialise ChromaDB: %s", e)
     
     async def process_papers(self, papers: List[Dict]) -> int:
         """Download, process, and index papers"""
         if not self.embedding_model or not self.collection:
-            print("⚠ RAG system not fully initialized. Skipping paper processing.")
+            logger.warning("RAG system not fully initialised — skipping paper processing.")
             return 0
-        
+
         total_chunks = 0
-        
+
         for paper in papers:
             try:
-                # Generate stable paper ID
-                paper_id = hashlib.md5(paper['url'].encode()).hexdigest()[:16]
-                
-                # BUG 4 FIX: Check if paper is already indexed to skip processing
-                if self.collection:
-                    existing = self.collection.get(
-                        where={"paper_id": paper_id},
-                        limit=1
-                    )
-                    if existing and existing['ids']:
-                        print(f"  ⏭ Skipping: {paper['title'][:60]}... (Already indexed)")
-                        continue
+                url = paper.get("url", "")
+                if not url:
+                    logger.warning("Paper '%s' has no URL — skipping.", paper.get("title", "<unknown>"))
+                    continue
 
-                print(f"📄 Processing: {paper['title'][:60]}...")
-                
+                # Generate a stable, normalised paper ID
+                paper_id = _url_to_paper_id(url)
+
+                # Skip papers already present in the vector store
+                existing = self.collection.get(
+                    where={"paper_id": paper_id},
+                    limit=1,
+                )
+                if existing and existing["ids"]:
+                    logger.info("Skipping '%s' (already indexed).", paper.get("title", url)[:60])
+                    continue
+
+                logger.info("Processing: %s", paper.get("title", url)[:60])
+
                 # Download PDF/TXT
                 file_path = await self.downloader.download_paper(paper)
                 if not file_path:
-                    print(f"  ⚠ Skipping (no PDF)")
+                    logger.warning("  Skipping '%s' — no PDF available.", paper.get("title", url)[:60])
                     continue
-                
+
                 # Extract text
                 text = await self.processor.extract_text(file_path)
                 if not text:
-                    print(f"  ⚠ Skipping (extraction failed)")
+                    logger.warning("  Skipping '%s' — text extraction failed.", paper.get("title", url)[:60])
                     continue
-                
+
                 # Chunk text
-                chunks = self.chunker.chunk_text(text, paper_id, paper['title'])
-                print(f"  ✓ Created {len(chunks)} chunks")
-                
+                chunks = self.chunker.chunk_text(text, paper_id, paper.get("title", ""))
+                logger.info("  Created %d chunks.", len(chunks))
+
                 # Generate embeddings and add to vector store
                 await self._index_chunks(chunks)
                 total_chunks += len(chunks)
-                
+
             except Exception as e:
-                print(f"  ⚠ Error processing paper: {e}")
+                logger.warning("Error processing paper '%s': %s", paper.get("title", ""), e)
                 continue
-        
-        print(f"\n✓ Indexed {total_chunks} total chunks from {len(papers)} papers")
+
+        logger.info("Indexed %d total chunks from %d papers.", total_chunks, len(papers))
         return total_chunks
     
     async def _index_chunks(self, chunks: List[DocumentChunk]):
@@ -517,7 +565,7 @@ class RAGEngine:
     async def query(self, query_text: str, top_k: int = 5) -> List[Dict]:
         """Semantic search over indexed papers"""
         if not self.embedding_model or not self.collection:
-            print("⚠ RAG system not available")
+            logger.warning("RAG system not available.")
             return []
         
         try:
@@ -547,9 +595,17 @@ class RAGEngine:
             return formatted_results
             
         except Exception as e:
-            print(f"⚠ Query failed: {e}")
+            logger.warning("RAG query failed: %s", e)
             return []
     
+    def is_paper_indexed(self, paper_url: str) -> bool:
+        """Return True if the paper identified by *paper_url* is already in the vector store."""
+        if not self.collection:
+            return False
+        paper_id = _url_to_paper_id(paper_url)
+        existing = self.collection.get(where={"paper_id": paper_id}, limit=1)
+        return bool(existing and existing["ids"])
+
     def get_stats(self) -> Dict:
         """Get RAG system statistics"""
         if not self.collection:

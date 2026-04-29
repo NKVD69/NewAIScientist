@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from agents import BaseAgent, GenerationAgent, ReflectionAgent, RankingAgent, EvolutionAgent, LiteratureAgent, GraphAgent, ExperimentAgent, ScopingAgent, ProtocolAgent, AnalysisAgent, WritingAgent; print\\('OK'\\)\")",
+      "Bash(py -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\)\\) for f in ['agents/base.py','agents/experiment.py','agents/analysis.py','agents/evolution.py','agents/generation.py','agents/literature.py','agents/graph_agent.py','agents/scoping.py','agents/ranking.py','agents/protocol.py','agents/reflection.py','agents/writing.py','agents/__init__.py']]; print\\('All syntax OK'\\)\")",
+      "Bash(py -c ' *)",
+      "Bash(git mv *)",
+      "Bash(git add *)",
+      "Bash(git push *)",
+      "Bash(gh pr create --title 'refactor: consolidate BaseAgent, clean root, switch to logging, add CI' --body ' *)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Users/Windows/AppData/Local/Programs/**)",
+      "Bash(powershell -Command \"Get-Command gh\")"
+    ]
+  }
+}
