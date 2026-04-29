@@ -11,31 +11,21 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-import config
 from models.hypothesis import Hypothesis
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
-try:
-    import openai
-except ImportError:
-    openai = None
 
-
-class EvolutionAgent:
+class EvolutionAgent(BaseAgent):
     """Refines and improves hypotheses through multiple strategies"""
-    
+
+    name = "Evolution"
+
     def __init__(self, use_local_llm: bool = True):
-        self.name = "Evolution"
+        super().__init__(use_local_llm=use_local_llm)
         self.evolved_hypotheses = 0
-        self.llm_client = None
-        
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-            except Exception:
-                self.llm_client = None
     
     async def evolve_hypothesis(self, 
                                hypothesis: Hypothesis,
@@ -156,7 +146,7 @@ Provide an improved version as a JSON object with keys: "title", "description", 
             new_hyp.limitations = data.get("limitations", new_hyp.limitations)
             new_hyp.generation_method = "evolved-llm"
         except Exception as e:
-            print(f"⚠ LLM evolution refinement failed: {e}")
+            logger.warning("LLM evolution refinement failed: %s", e)
         
         return new_hyp
 

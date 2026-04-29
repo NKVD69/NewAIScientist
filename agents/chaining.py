@@ -1,5 +1,8 @@
-from typing import List, Dict, Optional
+import logging
+from typing import List, Dict
 from models import Hypothesis, ResearchGoal, ContextMemory
+
+logger = logging.getLogger(__name__)
 
 class HypothesisChainingAgent:
     """
@@ -14,7 +17,7 @@ class HypothesisChainingAgent:
         """
         Analyzes a set of hypotheses and identifies dependencies or refinement links.
         """
-        print(f"  🔍 ChainingAgent is looking for connections among {len(hypotheses)} hypotheses...")
+        logger.info("ChainingAgent is looking for connections among %d hypotheses...", len(hypotheses))
         
         # Simplified logic for finding links
         links = []

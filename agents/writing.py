@@ -14,7 +14,6 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-import config
 from models.hypothesis import (
     Hypothesis,
     Manuscript,
@@ -23,27 +22,15 @@ from models.hypothesis import (
     ExperimentalProtocol,
 )
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
-try:
-    import openai
-except ImportError:
-    openai = None
 
-
-class WritingAgent:
+class WritingAgent(BaseAgent):
     """Drafts and compiles scientific manuscripts."""
 
-    def __init__(self, use_local_llm: bool = True):
-        self.name = "Writing"
-        self.llm_client = None
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-                logger.info("WritingAgent initialized with LLM.")
-            except Exception as e:
-                logger.warning("WritingAgent LLM init failed: %s", e)
+    name = "Writing"
 
     async def draft_section(
         self, 

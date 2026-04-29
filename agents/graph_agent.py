@@ -13,38 +13,28 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-import config
 from models.hypothesis import ResearchGoal
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
-try:
-    import openai
-except ImportError:
-    openai = None
 
-
-class GraphAgent:
+class GraphAgent(BaseAgent):
     """Agent responsible for building a lightweight knowledge graph from papers"""
-    
+
+    name = "Graph"
+
     def __init__(self, use_local_llm: bool = True):
-        self.name = "Graph"
+        super().__init__(use_local_llm=use_local_llm)
         self.graph = {}  # Simple adjacency list: {entity: [relation -> target]}
-        self.llm_client = None
-        
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-            except Exception:
-                self.llm_client = None
 
     async def build_graph(self, papers: List[Dict], goal: ResearchGoal = None) -> str:
         """Extract entities and relations, return graph summary"""
         if not self.llm_client or not papers:
             return "Graph construction skipped (no LLM or papers)."
             
-        print("🕸️ Building Knowledge Graph from literature...")
+        logger.info("Building knowledge graph from literature...")
         
         combined_text = "\n".join([f"{p['title']}: {p.get('summary', '')[:200]}" for p in papers[:5]])
         
@@ -94,7 +84,7 @@ class GraphAgent:
             return summary
             
         except Exception as e:
-            print(f"⚠ Graph construction failed: {e}")
+            logger.warning("Graph construction failed: %s", e)
             return "Graph construction failed."
 
     async def _synthesize_cross_domain_links(self, goal: ResearchGoal) -> str:
@@ -102,7 +92,7 @@ class GraphAgent:
         if not self.llm_client or not self.graph or len(self.graph) < 3:
             return ""
             
-        print("   🌉 Synthesizing Cross-Domain Links...")
+        logger.info("Synthesizing cross-domain links...")
         
         graph_text = ""
         for subj, links in list(self.graph.items())[:10]:
@@ -132,7 +122,7 @@ class GraphAgent:
             data = parse_json_response(response.choices[0].message.content)
             return data.get("bridging_insight", "")
         except Exception as e:
-            print(f"   ⚠ Cross-domain synthesis failed: {e}")
+            logger.warning("Cross-domain synthesis failed: %s", e)
             return ""
 
 

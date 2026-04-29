@@ -13,33 +13,23 @@ import logging
 import random
 from typing import Any, Dict, List, Optional, Tuple
 
-import config
 from models.hypothesis import Hypothesis
 from models.memory import TournamentMatch
 from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
-try:
-    import openai
-except ImportError:
-    openai = None
 
-
-class RankingAgent:
+class RankingAgent(BaseAgent):
     """Tournament-based hypothesis ranking using Elo system with LLM-as-judge."""
 
+    name = "Ranking"
+
     def __init__(self, use_local_llm: bool = True):
-        self.name = "Ranking"
+        super().__init__(use_local_llm=use_local_llm)
         self.k_factor = 32  # Elo K-factor
         self.matches_completed = 0
-        self.llm_client = None
-
-        if use_local_llm and openai:
-            try:
-                self.llm_client = config.get_openai_client()
-            except Exception:
-                self.llm_client = None
     
     async def conduct_tournament_match(self,
                                       hyp_a: Hypothesis,
