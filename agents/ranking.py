@@ -15,7 +15,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from models.hypothesis import Hypothesis
 from models.memory import TournamentMatch
-from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from utils.citation_verifier import (
+    verify_hypothesis,
+    verification_score,
+)
+from utils.llm import ensure_str, get_llm_completion, parse_json_response
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -26,10 +30,29 @@ class RankingAgent(BaseAgent):
 
     name = "Ranking"
 
-    def __init__(self, use_local_llm: bool = True):
+    def __init__(self, use_local_llm: bool = True, verify_citations: bool = True):
         super().__init__(use_local_llm=use_local_llm)
         self.k_factor = 32  # Elo K-factor
         self.matches_completed = 0
+        # When True, citation verification adjusts the per-match Elo update.
+        self.verify_citations = verify_citations
+        # Cached score per hypothesis ID to avoid re-hitting the network.
+        self._citation_cache: Dict[str, float] = {}
+
+    async def _citation_score(self, hyp: Hypothesis) -> float:
+        """Return the cached fraction of resolved citations for *hyp* (1.0 if disabled)."""
+        if not self.verify_citations:
+            return 1.0
+        if hyp.id in self._citation_cache:
+            return self._citation_cache[hyp.id]
+        try:
+            results = await verify_hypothesis(hyp)
+            score = verification_score(results)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Citation verification failed for %s: %s", hyp.id, exc)
+            score = 1.0
+        self._citation_cache[hyp.id] = score
+        return score
     
     async def conduct_tournament_match(self,
                                       hyp_a: Hypothesis,
@@ -40,9 +63,13 @@ class RankingAgent(BaseAgent):
         """
         winner_id = await self._simulate_debate(hyp_a, hyp_b)
         debate_summary = self._generate_debate_summary(hyp_a, hyp_b, winner_id)
-        
-        # Update Elo ratings
-        self._update_elo_ratings(hyp_a, hyp_b, winner_id)
+
+        # Citation verification — fold into the Elo update
+        cit_a = await self._citation_score(hyp_a)
+        cit_b = await self._citation_score(hyp_b)
+
+        # Update Elo ratings (modulated by citation trust)
+        self._update_elo_ratings(hyp_a, hyp_b, winner_id, cit_a, cit_b)
         
         match = TournamentMatch(
             hypothesis_a_id=hyp_a.id,
@@ -126,15 +153,34 @@ class RankingAgent(BaseAgent):
         score += novelty_bonus.get(hypothesis.novelty_level, 0.02)
         return min(1.0, max(0.0, score))
     
-    def _update_elo_ratings(self, hyp_a: Hypothesis, hyp_b: Hypothesis, winner_id: str):
+    def _update_elo_ratings(
+        self,
+        hyp_a: Hypothesis,
+        hyp_b: Hypothesis,
+        winner_id: str,
+        cit_a: float = 1.0,
+        cit_b: float = 1.0,
+    ):
+        """Standard Elo update, with the winner's gain damped by its citation score.
+
+        ``cit_a`` / ``cit_b`` are in [0, 1]. A winner whose citations are all
+        hallucinated still gets points (we don't want zero signal) but at half
+        the rate, while the loser's drop is amplified accordingly. The reverse
+        applies when the loser is the one with shaky citations.
+        """
         expected_a = 1 / (1 + 10 ** ((hyp_b.elo_rating - hyp_a.elo_rating) / 400))
         expected_b = 1 - expected_a
+
+        # Trust factor: 0.5 + 0.5 * citation_score, so worst case = half points.
+        trust_a = 0.5 + 0.5 * max(0.0, min(1.0, cit_a))
+        trust_b = 0.5 + 0.5 * max(0.0, min(1.0, cit_b))
+
         if winner_id == hyp_a.id:
-            hyp_a.elo_rating += self.k_factor * (1 - expected_a)
-            hyp_b.elo_rating += self.k_factor * (0 - expected_b)
+            hyp_a.elo_rating += self.k_factor * trust_a * (1 - expected_a)
+            hyp_b.elo_rating += self.k_factor * trust_b * (0 - expected_b)
         else:
-            hyp_a.elo_rating += self.k_factor * (0 - expected_a)
-            hyp_b.elo_rating += self.k_factor * (1 - expected_b)
+            hyp_a.elo_rating += self.k_factor * trust_a * (0 - expected_a)
+            hyp_b.elo_rating += self.k_factor * trust_b * (1 - expected_b)
     
     def _generate_debate_summary(self, hyp_a: Hypothesis, hyp_b: Hypothesis, winner_id: str) -> str:
         winner = hyp_a if winner_id == hyp_a.id else hyp_b

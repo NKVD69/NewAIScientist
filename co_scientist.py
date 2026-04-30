@@ -31,6 +31,7 @@ from models import (
     TournamentMatch,
     ContextMemory,
     AnalysisPlan,
+    UserFeedback,
 )
 from agents import (
     LiteratureAgent,
@@ -307,6 +308,57 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
             results.append(result)
         return results
 
+    # ------------------------------------------------------------------
+    # PHASE 3.5: INTERACTIVE FEEDBACK LOOP
+    # ------------------------------------------------------------------
+
+    async def run_interactive_feedback_cycle(
+        self,
+        top_n: int = 3,
+        feedbacks: Optional[List[UserFeedback]] = None,
+    ) -> List[Hypothesis]:
+        """Inject scientist feedback into hypothesis evolution.
+
+        If ``feedbacks`` is provided, those entries drive the cycle (for
+        non-interactive callers and tests). Otherwise the CLI driver is
+        invoked over the top ``top_n`` hypotheses by Elo.
+
+        Returns the list of newly-evolved hypotheses (may be empty).
+        """
+        top = sorted(
+            self.context_memory.hypotheses.values(),
+            key=lambda h: h.elo_rating,
+            reverse=True,
+        )[:top_n]
+        if not top:
+            logger.info("No hypotheses available for interactive feedback.")
+            return []
+
+        if feedbacks is None:
+            from utils.interactive_feedback import collect_feedback_cli
+            feedbacks = collect_feedback_cli(top)
+
+        evolved: List[Hypothesis] = []
+        by_id = {h.id: h for h in top}
+        for fb in feedbacks:
+            hyp = by_id.get(fb.hypothesis_id)
+            if hyp is None:
+                logger.warning("Feedback for unknown hypothesis %s — ignored.", fb.hypothesis_id)
+                continue
+            new_hyp = await self.evolution_agent.evolve_with_feedback(hyp, fb)
+            if new_hyp is not None:
+                self.context_memory.hypotheses[new_hyp.id] = new_hyp
+                evolved.append(new_hyp)
+            elif fb.verdict == "disagree":
+                # Mark the rejected hypothesis so downstream cycles deprioritise it.
+                hyp.elo_rating = max(0.0, hyp.elo_rating - 200.0)
+
+        logger.info(
+            "Interactive feedback: %d feedbacks ⇒ %d evolved hypotheses.",
+            len(feedbacks), len(evolved),
+        )
+        return evolved
+
     async def run_meta_review_cycle(self) -> Dict[str, Any]:
         """Meta-review: synthesize insights across all hypotheses."""
         print(f"\n🔄 Generating meta-review...")
@@ -540,6 +592,20 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
 
 async def main():
     """Main execution function."""
+    import argparse
+    parser = argparse.ArgumentParser(description="NewAI Scientist v3.0")
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Pause after hypothesis generation to collect scientist feedback "
+             "(verdict + free-text refinement) before proceeding to writing.",
+    )
+    parser.add_argument(
+        "--iterations", type=int, default=3,
+        help="Number of review/tournament/evolution iterations.",
+    )
+    args, _ = parser.parse_known_args()
+
     co_scientist = CoScientist()
 
     await co_scientist.initialize_research_goal(
@@ -558,7 +624,14 @@ async def main():
         ],
     )
 
-    await co_scientist.run_full_cycle(num_iterations=3)
+    await co_scientist.run_full_cycle(num_iterations=args.iterations)
+
+    if args.interactive:
+        print("\n" + "=" * 70)
+        print("🧑‍🔬 INTERACTIVE FEEDBACK LOOP")
+        print("=" * 70)
+        await co_scientist.run_interactive_feedback_cycle(top_n=3)
+
     co_scientist.export_hypotheses_json("co_scientist_results.json")
 
     print("\n" + "=" * 70)

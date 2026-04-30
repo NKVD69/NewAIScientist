@@ -106,6 +106,27 @@ class Hypothesis:
 
 
 @dataclass
+class UserFeedback:
+    """A scientist's structured feedback on a single hypothesis.
+
+    Used by the interactive feedback loop: the scientist either accepts,
+    rejects, or asks for a refinement of an evolved hypothesis. The free-text
+    ``comment`` is fed back into ``EvolutionAgent.evolve_with_feedback`` so
+    the next iteration can incorporate the critique.
+    """
+    hypothesis_id: str = ""
+    verdict: str = "refine"  # one of: "agree", "disagree", "refine"
+    comment: str = ""
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+
+    def __post_init__(self):
+        if self.verdict not in {"agree", "disagree", "refine"}:
+            raise ValueError(
+                f"verdict must be 'agree' | 'disagree' | 'refine', got {self.verdict!r}"
+            )
+
+
+@dataclass
 class HypothesisLink:
     """Directed link between two hypotheses"""
     source_id: str = ""

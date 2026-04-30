@@ -438,15 +438,28 @@ class SemanticChunker:
 class RAGEngine:
     """Main RAG engine orchestrating all components"""
     
-    def __init__(self, collection_name: str = "papers", persist_dir: str = "./chroma_db"):
+    def __init__(
+        self,
+        collection_name: str = "papers",
+        persist_dir: str = "./chroma_db",
+        enable_hybrid: bool = True,
+        enable_rerank: bool = True,
+    ):
         self.collection_name = collection_name
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(exist_ok=True)
-        
+        self.enable_hybrid = enable_hybrid
+        self.enable_rerank = enable_rerank
+
         # Initialize components
         self.downloader = PDFDownloader()
         self.processor = DocumentProcessor()
         self.chunker = SemanticChunker()
+
+        # Hybrid retrieval state — populated lazily by _ensure_bm25_index().
+        self._bm25 = None
+        self._bm25_dirty = True
+        self._reranker = None
         
         # Initialize embedding model
         self.embedding_model = None
@@ -561,7 +574,124 @@ class RAGEngine:
             documents=texts,
             metadatas=metadatas
         )
-    
+
+        # New chunks ⇒ BM25 index needs to be rebuilt before next hybrid query.
+        self._bm25_dirty = True
+
+    # ------------------------------------------------------------------
+    # Hybrid retrieval (BM25 + dense + RRF + optional cross-encoder)
+    # ------------------------------------------------------------------
+
+    def _ensure_bm25_index(self) -> None:
+        """Build (or rebuild) the BM25 index from the current Chroma corpus."""
+        if not self.enable_hybrid or self.collection is None:
+            return
+        if self._bm25 is not None and not self._bm25_dirty:
+            return
+        try:
+            from utils.hybrid_retrieval import BM25Index
+            data = self.collection.get(include=["documents", "metadatas"])
+            ids = data.get("ids") or []
+            docs = data.get("documents") or []
+            if not ids or not docs:
+                self._bm25 = BM25Index()
+                self._bm25_dirty = False
+                return
+            idx = BM25Index()
+            for cid, text in zip(ids, docs):
+                idx.add(cid, text or "")
+            idx.build()
+            self._bm25 = idx
+            self._bm25_dirty = False
+            logger.info("BM25 index built: %d chunks.", len(idx))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("BM25 index build failed: %s — hybrid disabled.", exc)
+            self._bm25 = None
+            self._bm25_dirty = False
+
+    def _ensure_reranker(self):
+        """Lazy-load the cross-encoder reranker on first hybrid query."""
+        if not self.enable_rerank:
+            return None
+        if self._reranker is not None:
+            return self._reranker
+        try:
+            from utils.hybrid_retrieval import CrossEncoderReranker
+            self._reranker = CrossEncoderReranker()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Reranker init failed: %s", exc)
+            self._reranker = None
+        return self._reranker
+
+    async def query_hybrid(
+        self,
+        query_text: str,
+        top_k: int = 5,
+        fusion_candidates: int = 50,
+    ) -> List[Dict]:
+        """Hybrid retrieval: BM25 + dense + RRF fusion + optional rerank.
+
+        Falls back transparently to pure dense (``query``) when the BM25
+        layer is unavailable.
+        """
+        if not self.embedding_model or not self.collection:
+            logger.warning("RAG system not available.")
+            return []
+
+        from utils.hybrid_retrieval import hybrid_search
+
+        # Pull a deeper dense slate for fusion.
+        try:
+            def encode_query():
+                return self.embedding_model.encode(
+                    [query_text], convert_to_tensor=False,
+                ).tolist()
+
+            query_embedding = await asyncio.to_thread(encode_query)
+            dense_raw = self.collection.query(
+                query_embeddings=query_embedding,
+                n_results=fusion_candidates,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Hybrid query (dense leg) failed: %s", exc)
+            return []
+
+        # Build (doc_id, text) pairs in dense rank order.
+        dense_pairs: List[Tuple[str, str]] = []
+        meta_by_id: Dict[str, Dict] = {}
+        if dense_raw.get("documents"):
+            ids = dense_raw.get("ids", [[]])[0]
+            docs = dense_raw["documents"][0]
+            metas = dense_raw.get("metadatas", [[]])[0]
+            for cid, text, meta in zip(ids, docs, metas):
+                dense_pairs.append((cid, text))
+                meta_by_id[cid] = meta or {}
+
+        # Build / refresh the BM25 index, instantiate the reranker.
+        self._ensure_bm25_index()
+        reranker = self._ensure_reranker()
+
+        fused = hybrid_search(
+            query_text,
+            dense_results=dense_pairs,
+            bm25=self._bm25,
+            top_k=top_k,
+            fusion_candidates=fusion_candidates,
+            reranker=reranker,
+        )
+
+        # Format results in the same shape as ``query``.
+        out: List[Dict] = []
+        for cid, score, text in fused:
+            meta = meta_by_id.get(cid, {})
+            out.append({
+                "text": text,
+                "paper_title": meta.get("paper_title", ""),
+                "paper_id": meta.get("paper_id", ""),
+                "score": float(score),
+            })
+        return out
+
     async def query(self, query_text: str, top_k: int = 5) -> List[Dict]:
         """Semantic search over indexed papers"""
         if not self.embedding_model or not self.collection:

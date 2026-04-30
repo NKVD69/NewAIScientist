@@ -12,6 +12,7 @@ from .hypothesis import (
     ScoredQuestion,
     StateOfArt,
     StudyPhase,
+    UserFeedback,
     VariableRole,
     Variable,
     ExperimentalProtocol,
@@ -37,6 +38,7 @@ __all__ = [
     "Hypothesis",
     "HypothesisLink",
     "ReviewCritique",
+    "UserFeedback",
     # Experimental
     "Variable",
     "ExperimentalProtocol",
