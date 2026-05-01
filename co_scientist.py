@@ -256,22 +256,69 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         print(f"✓ Completed {len(reviews)} reviews")
         return reviews
 
-    async def run_tournament_cycle(self, num_matches: int = 5) -> List[TournamentMatch]:
-        """Conduct tournament matches."""
-        print(f"\n🏆 Running tournament matches...")
+    async def run_tournament_cycle(
+        self,
+        num_matches: int = 5,
+        pairing: str = "information_gain",
+    ) -> List[TournamentMatch]:
+        """Conduct tournament matches.
+
+        ``pairing`` is one of:
+          - ``"information_gain"`` (default): pick pairs whose Elo predicts a
+            coin-flip, penalised by their match count this tournament.
+          - ``"swiss"``: classic Swiss-system top-down pairing.
+          - ``"random"``: legacy uniform-random fallback.
+        """
+        print(f"\n🏆 Running tournament matches (pairing={pairing})...")
         hyp_list = list(self.context_memory.hypotheses.values())
         if len(hyp_list) < 2:
             print("  ⚠ Need at least 2 hypotheses for tournament")
             return []
 
         reviewed = [h for h in hyp_list if len(h.reviews) > 0]
+        pool = reviewed if len(reviewed) >= 2 else hyp_list
+        by_id = {h.id: h for h in pool}
+
+        # Build the list of pairs we want to play.
+        history_pairs = [
+            (m.hypothesis_a_id, m.hypothesis_b_id)
+            for m in self.context_memory.tournament_history
+        ]
+        competitors = [(h.id, h.elo_rating) for h in pool]
+
+        if pairing == "swiss":
+            from utils.tournament_pairing import swiss_pairing
+            pair_plan: list = []
+            played = list(history_pairs)
+            # Run Swiss rounds until we have enough matches
+            while len(pair_plan) < num_matches:
+                round_pairs = swiss_pairing(competitors, history=played)
+                if not round_pairs:
+                    break
+                for p in round_pairs:
+                    if len(pair_plan) >= num_matches:
+                        break
+                    pair_plan.append(p)
+                    played.append(p)
+        elif pairing == "information_gain":
+            from utils.tournament_pairing import information_gain_pairing
+            pair_plan = information_gain_pairing(
+                competitors, num_matches=num_matches, history=history_pairs,
+            )
+        else:  # "random" / legacy
+            pair_plan = []
+            for _ in range(num_matches):
+                if len(pool) < 2:
+                    break
+                a = random.choice(pool)
+                b = random.choice([h for h in pool if h.id != a.id])
+                pair_plan.append((a.id, b.id))
+
         matches = []
-        for _ in range(min(num_matches, len(reviewed) * 2)):
-            pool = reviewed if len(reviewed) >= 2 else hyp_list
-            if len(pool) < 2:
-                break
-            hyp_a = random.choice(pool)
-            hyp_b = random.choice([h for h in pool if h.id != hyp_a.id])
+        for a_id, b_id in pair_plan:
+            hyp_a, hyp_b = by_id.get(a_id), by_id.get(b_id)
+            if hyp_a is None or hyp_b is None:
+                continue
             winner_id, match = await self.ranking_agent.conduct_tournament_match(hyp_a, hyp_b)
             matches.append(match)
             self.context_memory.tournament_history.append(match)

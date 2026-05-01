@@ -67,6 +67,12 @@ try:
 except ImportError:
     pypdf = None
 
+# Optional: pdfplumber for table extraction. Falls back to pypdf-only when absent.
+try:
+    import pdfplumber  # type: ignore
+except ImportError:  # pragma: no cover
+    pdfplumber = None
+
 # Embeddings
 try:
     from sentence_transformers import SentenceTransformer
@@ -103,7 +109,67 @@ class DocumentChunk:
     chunk_index: int
     page_number: Optional[int] = None
     section: Optional[str] = None
+    chunk_type: str = "text"   # "text" | "table" | "figure_caption"
     metadata: Dict = None
+
+
+# ---------------------------------------------------------------------------
+# Table & figure-caption extraction
+# ---------------------------------------------------------------------------
+
+# Captures lines starting with "Figure 1", "Fig. 2:", "Table 3 -" etc. and
+# the rest of the line. Non-greedy so it stops at the next newline.
+_FIGURE_CAPTION_RE = re.compile(
+    r"(?m)^\s*(?:Figure|Fig\.?|Table)\s+\d+[\.\:\-—]?\s*(.+?)$",
+    re.IGNORECASE,
+)
+
+
+def _serialise_table(rows) -> str:
+    """Render a 2-D table (list of rows) as a compact pipe-separated string."""
+    out_lines = []
+    for row in rows:
+        if row is None:
+            continue
+        cells = [(str(c).strip() if c is not None else "") for c in row]
+        if any(cells):
+            out_lines.append(" | ".join(cells))
+    return "\n".join(out_lines)
+
+
+def extract_tables_from_pdf(file_path) -> List[Dict]:
+    """Extract every table from a PDF as ``{page, text}`` records.
+
+    Uses pdfplumber when available; returns ``[]`` otherwise. Empty tables
+    are skipped. Failures are logged and swallowed.
+    """
+    if pdfplumber is None:
+        return []
+    out: List[Dict] = []
+    try:
+        with pdfplumber.open(str(file_path)) as pdf:
+            for page_num, page in enumerate(pdf.pages, start=1):
+                try:
+                    for tbl in page.extract_tables() or []:
+                        text = _serialise_table(tbl)
+                        if text:
+                            out.append({"page": page_num, "text": text})
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Table extraction error on page %d: %s", page_num, exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("pdfplumber failed on %s: %s", file_path, exc)
+    return out
+
+
+def extract_figure_captions(text: str) -> List[str]:
+    """Find figure / table captions in raw extracted PDF text.
+
+    Returns the full caption lines (including the leading "Figure N:" so
+    callers know where each came from).
+    """
+    if not text:
+        return []
+    return [m.group(0).strip() for m in _FIGURE_CAPTION_RE.finditer(text)]
 
 
 class PDFDownloader:
@@ -531,7 +597,29 @@ class RAGEngine:
 
                 # Chunk text
                 chunks = self.chunker.chunk_text(text, paper_id, paper.get("title", ""))
-                logger.info("  Created %d chunks.", len(chunks))
+
+                # Enrich with extracted tables and figure captions
+                title = paper.get("title", "")
+                if file_path.suffix.lower() == ".pdf":
+                    for t_idx, tbl in enumerate(extract_tables_from_pdf(file_path)):
+                        chunks.append(DocumentChunk(
+                            text=tbl["text"],
+                            paper_id=paper_id,
+                            paper_title=title,
+                            chunk_index=len(chunks),
+                            page_number=tbl.get("page"),
+                            chunk_type="table",
+                        ))
+                for caption in extract_figure_captions(text):
+                    chunks.append(DocumentChunk(
+                        text=caption,
+                        paper_id=paper_id,
+                        paper_title=title,
+                        chunk_index=len(chunks),
+                        chunk_type="figure_caption",
+                    ))
+
+                logger.info("  Created %d chunks (text+tables+captions).", len(chunks))
 
                 # Generate embeddings and add to vector store
                 await self._index_chunks(chunks)
@@ -556,7 +644,9 @@ class RAGEngine:
             {
                 "paper_id": chunk.paper_id,
                 "paper_title": chunk.paper_title,
-                "chunk_index": chunk.chunk_index
+                "chunk_index": chunk.chunk_index,
+                "chunk_type": chunk.chunk_type,
+                "page_number": chunk.page_number or -1,
             }
             for chunk in chunks
         ]

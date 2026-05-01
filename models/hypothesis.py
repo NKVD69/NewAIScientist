@@ -51,6 +51,94 @@ class VariableRole(Enum):
 
 
 # ============================================================================
+# CLAIM / EVIDENCE / CONFIDENCE
+# ============================================================================
+
+@dataclass
+class Evidence:
+    """A single piece of evidence supporting (or contradicting) a claim.
+
+    ``source_type`` is one of: ``"rag"`` (RAG chunk), ``"citation"``
+    (external DOI/arXiv/PMID), ``"prior"`` (general prior knowledge),
+    ``"experiment"`` (data we generated ourselves).
+    ``polarity`` is +1 if the evidence supports the claim, -1 if it
+    contradicts it, 0 if it is purely contextual.
+    """
+    text: str = ""
+    source_type: str = "prior"
+    source_ref: str = ""           # DOI / arXiv ID / chunk ID / dataset ID
+    polarity: int = 1
+    confidence: float = 0.5        # 0..1, the agent's belief in this evidence
+
+    def __post_init__(self):
+        if self.polarity not in (-1, 0, 1):
+            raise ValueError(f"polarity must be -1, 0, or 1; got {self.polarity}")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(
+                f"confidence must be in [0, 1]; got {self.confidence}"
+            )
+
+
+@dataclass
+class Claim:
+    """An atomic, falsifiable assertion making up a hypothesis.
+
+    ``confidence`` is the agent's belief in this specific claim, separate
+    from the claim's evidentiary weight (which is computed from the
+    aggregated polarity*confidence of its ``evidence`` list).
+    """
+    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    statement: str = ""
+    evidence: List[Evidence] = field(default_factory=list)
+    confidence: float = 0.5
+
+    def __post_init__(self):
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(
+                f"confidence must be in [0, 1]; got {self.confidence}"
+            )
+
+    def evidence_score(self) -> float:
+        """Aggregate score in [-1, 1]: weighted sum of polarities × confidences."""
+        if not self.evidence:
+            return 0.0
+        total = sum(abs(e.confidence) for e in self.evidence) or 1.0
+        return sum(e.polarity * e.confidence for e in self.evidence) / total
+
+
+# ============================================================================
+# FALSIFIABLE PREDICTIONS
+# ============================================================================
+
+@dataclass
+class Prediction:
+    """A quantitative, pre-registered prediction tied to a claim.
+
+    A hypothesis with no ``Prediction`` instances is by construction
+    not falsifiable. The ``refuting_threshold`` makes refutation explicit:
+    if the measured ``quantity`` falls outside ``[expected_value - ci,
+    expected_value + ci]`` AND beyond ``refuting_threshold``, the parent
+    claim is considered refuted.
+    """
+    quantity: str = ""
+    expected_value: float = 0.0
+    ci: float = 0.0                # symmetric ±CI around expected_value
+    unit: str = ""
+    refuting_threshold: float = 0.0
+    rationale: str = ""
+
+    def is_falsifiable(self) -> bool:
+        """A prediction is falsifiable iff the refuting threshold is non-trivial."""
+        return self.refuting_threshold > 0 and self.ci >= 0
+
+    def is_refuted_by(self, observed: float) -> bool:
+        """Return True if ``observed`` falls beyond the refuting threshold."""
+        if not self.is_falsifiable():
+            return False
+        return abs(observed - self.expected_value) > self.refuting_threshold
+
+
+# ============================================================================
 # REVIEW & CRITIQUE
 # ============================================================================
 
@@ -103,6 +191,13 @@ class Hypothesis:
     linked_hypotheses: List[Tuple[str, str]] = field(default_factory=list)
     # Each tuple: (target_hypothesis_id, link_type)
     # link_type: "supports", "contradicts", "depends_on"
+
+    # Structured decomposition (improvement #2)
+    claims: List["Claim"] = field(default_factory=list)
+    # Falsifiable, pre-registered predictions (improvement #3)
+    falsifiable_predictions: List["Prediction"] = field(default_factory=list)
+    # Falsifiability score (0..1), filled by FalsifiabilityAgent
+    falsifiability_score: float = 0.0
 
 
 @dataclass

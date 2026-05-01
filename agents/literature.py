@@ -130,6 +130,60 @@ class LiteratureAgent(BaseAgent):
             logger.warning("Query refinement failed: %s", e)
             return None
 
+    async def refresh(
+        self,
+        goal: ResearchGoal,
+        existing_papers: List[Dict],
+        last_seen: Dict[str, str],
+        max_results: int = 10,
+        sources: List[str] = None,
+    ) -> Dict[str, Any]:
+        """Fetch only papers newer than the per-source watermark.
+
+        Parameters
+        ----------
+        goal
+            The research goal driving query generation.
+        existing_papers
+            The papers already known locally (for dedup against URL/title).
+        last_seen
+            ``{source: iso_timestamp}`` watermark dict, mutated in place.
+        max_results, sources
+            Forwarded to :meth:`search_literature`.
+
+        Returns
+        -------
+        ``{"new_papers": [...], "last_seen": {...}}``
+        """
+        from utils.literature_refresh import filter_new_papers, update_watermark
+
+        if sources is None:
+            sources = ["arxiv"]
+
+        # Run a single iteration; we only want fresh hits.
+        fetched = await self.search_literature(
+            goal, max_results=max_results, sources=sources, iterations=1,
+        )
+
+        # Per-source filtering (most queries hit every source equally; this
+        # keeps the watermark separate per source for accurate next-time
+        # cutoffs).
+        new_papers: List[Dict] = []
+        for source in sources:
+            src = source.lower()
+            from_src = [p for p in fetched if p.get("source", "").lower() == src]
+            fresh = filter_new_papers(
+                from_src, existing_papers, last_seen=last_seen.get(src),
+            )
+            new_papers.extend(fresh)
+            update_watermark(last_seen, src, fresh)
+
+        logger.info(
+            "refresh(): %d fresh papers (out of %d fetched).",
+            len(new_papers), len(fetched),
+        )
+        return {"new_papers": new_papers, "last_seen": last_seen}
+
     async def search_literature(self, goal: ResearchGoal, max_results: int = 5, sources: List[str] = None, iterations: int = 2) -> List[Dict]:
         """
         Search for relevant papers using specified source APIs with iterative refinement.
