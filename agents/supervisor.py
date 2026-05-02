@@ -60,22 +60,15 @@ class SupervisorAgent:
             agent = self.agent_registry.get(task.agent_name)
             
             if agent:
-                if task.action == "generate":
-                    task.result = await agent.generate_initial_hypotheses(**task.params)
-                elif task.action == "review":
-                    task.result = await agent.review_hypothesis(**task.params)
-                elif task.action == "tournament":
-                    task.result = await agent.conduct_tournament_match(**task.params)
-                elif task.action == "compute_proximity":
-                    task.result = await agent.compute_proximity(**task.params)
-                elif task.action == "evolve":
-                    task.result = await agent.evolve_hypothesis(**task.params)
-                elif task.action == "meta_review":
-                    task.result = await agent.generate_meta_review(**task.params)
-                elif task.action == "search_literature":
-                    task.result = await agent.search_literature(**task.params)
-                elif task.action == "experiment":
-                    task.result = await agent.run_experiment(**task.params)
+                action_method = getattr(agent, task.action, None)
+                if action_method and callable(action_method):
+                    try:
+                        task.result = await action_method(**task.params)
+                    except Exception as e:
+                        logger.error(f"Task {task.action} on {agent.name} failed: {e}")
+                        task.result = e
+                else:
+                    logger.warning(f"Action {task.action} not found on agent {agent.name}")
                 
                 task.completed_at = datetime.now()
                 self.task_history.append(task)

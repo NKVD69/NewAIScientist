@@ -1,3 +1,12 @@
+[project]
+name = "new-ai-scientist"
+version = "3.0.0"
+description = "AI Co-Scientist: Multi-Agent System for Scientific Discovery"
+requires-python = ">=3.9"
+
+[project.optional-dependencies]
+analysis = ["pandas>=2.0.0"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

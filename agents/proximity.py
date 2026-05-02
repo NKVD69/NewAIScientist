@@ -85,28 +85,34 @@ class ProximityAgent:
                 logger.warning("Vector similarity failed, using Jaccard fallback: %s", e)
 
         # --- Fallback: Jaccard-based heuristic ---
-        similarity = 0.0
+        similarity_score = 0.0
+        total_weight = 0.0
 
         mech_a = set(ensure_str(hyp_a.mechanism).lower().split())
         mech_b = set(ensure_str(hyp_b.mechanism).lower().split())
-        if mech_a and mech_b:
+        if mech_a or mech_b:
             shared = len(mech_a & mech_b)
-            total = len(mech_a | mech_b)
-            similarity += (shared / total if total > 0 else 0.0) * 0.5
+            union = len(mech_a | mech_b)
+            similarity_score += (shared / union if union > 0 else 0.0) * 0.5
+            total_weight += 0.5
 
         pred_a = set(hyp_a.testable_predictions)
         pred_b = set(hyp_b.testable_predictions)
-        if pred_a and pred_b:
+        if pred_a or pred_b:
             max_p = max(len(pred_a), len(pred_b))
-            similarity += (len(pred_a & pred_b) / max_p) * 0.3
+            similarity_score += (len(pred_a & pred_b) / max_p if max_p > 0 else 0.0) * 0.3
+            total_weight += 0.3
 
         cite_a = set(hyp_a.cited_papers)
         cite_b = set(hyp_b.cited_papers)
-        if cite_a and cite_b:
+        if cite_a or cite_b:
             max_c = max(len(cite_a), len(cite_b))
-            similarity += (len(cite_a & cite_b) / max_c) * 0.2
+            similarity_score += (len(cite_a & cite_b) / max_c if max_c > 0 else 0.0) * 0.2
+            total_weight += 0.2
 
-        return min(1.0, max(0.0, similarity))
+        if total_weight > 0:
+            return min(1.0, max(0.0, similarity_score / total_weight))
+        return 0.0
 
 
 __all__ = ["ProximityAgent"]
