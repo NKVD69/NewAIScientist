@@ -11,8 +11,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from models.hypothesis import Hypothesis
-from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from models.hypothesis import Hypothesis, UserFeedback
+from utils.llm import ensure_str, get_llm_completion, parse_json_response
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -148,6 +148,107 @@ Provide an improved version as a JSON object with keys: "title", "description", 
         except Exception as e:
             logger.warning("LLM evolution refinement failed: %s", e)
         
+        return new_hyp
+
+
+    async def evolve_with_feedback(
+        self,
+        hypothesis: Hypothesis,
+        feedback: UserFeedback,
+    ) -> Optional[Hypothesis]:
+        """Refine a hypothesis using a scientist's structured feedback.
+
+        Behaviour by ``feedback.verdict``:
+        - ``"agree"``    → no change; returns ``None``.
+        - ``"disagree"`` → returns ``None`` (caller should drop the hypothesis).
+        - ``"refine"``   → returns a new evolved hypothesis whose mechanism
+          and predictions incorporate the comment as an explicit constraint.
+        """
+        verdict = feedback.verdict
+        if verdict == "agree":
+            self._note_feedback(hypothesis, feedback)
+            return None
+        if verdict == "disagree":
+            self._note_feedback(hypothesis, feedback)
+            return None
+
+        # verdict == "refine"
+        new_hyp = Hypothesis(
+            title=f"{hypothesis.title} (refined)",
+            description=hypothesis.description,
+            mechanism=hypothesis.mechanism,
+            testable_predictions=list(hypothesis.testable_predictions),
+            limitations=list(hypothesis.limitations),
+            grounding_evidence=list(hypothesis.grounding_evidence),
+            cited_papers=list(hypothesis.cited_papers),
+            parent_ids=[hypothesis.id],
+            generation_method="evolved-feedback",
+        )
+
+        # Always record the human constraint, even when the LLM is offline.
+        constraint = (feedback.comment or "").strip()
+        if constraint:
+            new_hyp.limitations.append(f"Scientist constraint: {constraint}")
+
+        if self.llm_client and constraint:
+            new_hyp = await self._llm_refine_with_feedback(new_hyp, hypothesis, constraint)
+
+        self.evolved_hypotheses += 1
+        self._note_feedback(new_hyp, feedback)
+        return new_hyp
+
+    @staticmethod
+    def _note_feedback(hyp: Hypothesis, feedback: UserFeedback) -> None:
+        """Stash the feedback on the hypothesis for later inspection/export."""
+        existing = getattr(hyp, "_user_feedback", None)
+        if existing is None:
+            hyp._user_feedback = [feedback]  # type: ignore[attr-defined]
+        else:
+            existing.append(feedback)
+
+    async def _llm_refine_with_feedback(
+        self,
+        new_hyp: Hypothesis,
+        original: Hypothesis,
+        constraint: str,
+    ) -> Hypothesis:
+        """LLM call that injects the scientist's free-text critique as a hard constraint."""
+        prompt = f"""You are a senior scientific collaborator refining a hypothesis based on
+direct feedback from the principal investigator.
+
+Original hypothesis:
+- Title: {original.title}
+- Description: {original.description}
+- Mechanism: {original.mechanism}
+- Testable predictions: {original.testable_predictions}
+
+The scientist's critique (treat this as a hard constraint, NOT a suggestion):
+"\"\"\"
+{constraint}
+\"\"\""
+
+Produce a refined hypothesis that addresses the critique without losing the
+original's scientific intent. Output ONLY a raw JSON object with keys:
+"title", "description", "mechanism", "testable_predictions" (list of strings),
+"limitations" (list of strings)."""
+
+        try:
+            response = await get_llm_completion(
+                self.llm_client,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4,
+                json_mode=True,
+            )
+            data = parse_json_response(response.choices[0].message.content)
+            new_hyp.title = ensure_str(data.get("title", new_hyp.title))
+            new_hyp.description = ensure_str(data.get("description", new_hyp.description))
+            new_hyp.mechanism = ensure_str(data.get("mechanism", new_hyp.mechanism))
+            new_hyp.testable_predictions = data.get(
+                "testable_predictions", new_hyp.testable_predictions,
+            )
+            new_hyp.limitations = data.get("limitations", new_hyp.limitations)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Feedback-driven LLM refinement failed: %s", e)
         return new_hyp
 
 

@@ -17,11 +17,61 @@ import config
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# URL normalisation helpers
+# ---------------------------------------------------------------------------
+
+def _normalize_arxiv_url(url: str) -> str:
+    """
+    Canonicalise any ArXiv URL variant to ``https://arxiv.org/abs/<id>``.
+
+    Handled inputs:
+      - https://arxiv.org/abs/2103.12345
+      - https://arxiv.org/abs/2103.12345v2
+      - https://arxiv.org/pdf/2103.12345.pdf
+      - https://arxiv.org/pdf/2103.12345v2.pdf
+      - http://arxiv.org/abs/...
+      - arxiv:2103.12345
+      - plain ArXiv IDs embedded in other URLs
+
+    Non-ArXiv URLs are returned unchanged.
+    """
+    url = url.strip()
+
+    # arxiv:<id> shorthand
+    if url.lower().startswith("arxiv:"):
+        arxiv_id = url.split(":", 1)[1].strip()
+        return f"https://arxiv.org/abs/{arxiv_id}"
+
+    if "arxiv.org" not in url:
+        return url
+
+    # Extract the ArXiv ID from /abs/ or /pdf/ paths
+    match = re.search(r"arxiv\.org/(?:abs|pdf)/([^\s?#]+?)(?:\.pdf)?$", url, re.IGNORECASE)
+    if match:
+        arxiv_id = match.group(1)
+        return f"https://arxiv.org/abs/{arxiv_id}"
+
+    # Fallback: return as-is
+    return url
+
+
+def _url_to_paper_id(url: str) -> str:
+    """Return a short, stable hex ID derived from the *normalised* URL."""
+    return hashlib.md5(_normalize_arxiv_url(url).encode()).hexdigest()[:16]
+
 # PDF and text processing
 try:
     import pypdf
 except ImportError:
     pypdf = None
+
+# Optional: pdfplumber for table extraction. Falls back to pypdf-only when absent.
+try:
+    import pdfplumber  # type: ignore
+except ImportError:  # pragma: no cover
+    pdfplumber = None
 
 # Embeddings
 try:
@@ -59,7 +109,67 @@ class DocumentChunk:
     chunk_index: int
     page_number: Optional[int] = None
     section: Optional[str] = None
+    chunk_type: str = "text"   # "text" | "table" | "figure_caption"
     metadata: Dict = None
+
+
+# ---------------------------------------------------------------------------
+# Table & figure-caption extraction
+# ---------------------------------------------------------------------------
+
+# Captures lines starting with "Figure 1", "Fig. 2:", "Table 3 -" etc. and
+# the rest of the line. Non-greedy so it stops at the next newline.
+_FIGURE_CAPTION_RE = re.compile(
+    r"(?m)^\s*(?:Figure|Fig\.?|Table)\s+\d+[\.\:\-—]?\s*(.+?)$",
+    re.IGNORECASE,
+)
+
+
+def _serialise_table(rows) -> str:
+    """Render a 2-D table (list of rows) as a compact pipe-separated string."""
+    out_lines = []
+    for row in rows:
+        if row is None:
+            continue
+        cells = [(str(c).strip() if c is not None else "") for c in row]
+        if any(cells):
+            out_lines.append(" | ".join(cells))
+    return "\n".join(out_lines)
+
+
+def extract_tables_from_pdf(file_path) -> List[Dict]:
+    """Extract every table from a PDF as ``{page, text}`` records.
+
+    Uses pdfplumber when available; returns ``[]`` otherwise. Empty tables
+    are skipped. Failures are logged and swallowed.
+    """
+    if pdfplumber is None:
+        return []
+    out: List[Dict] = []
+    try:
+        with pdfplumber.open(str(file_path)) as pdf:
+            for page_num, page in enumerate(pdf.pages, start=1):
+                try:
+                    for tbl in page.extract_tables() or []:
+                        text = _serialise_table(tbl)
+                        if text:
+                            out.append({"page": page_num, "text": text})
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Table extraction error on page %d: %s", page_num, exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("pdfplumber failed on %s: %s", file_path, exc)
+    return out
+
+
+def extract_figure_captions(text: str) -> List[str]:
+    """Find figure / table captions in raw extracted PDF text.
+
+    Returns the full caption lines (including the leading "Figure N:" so
+    callers know where each came from).
+    """
+    if not text:
+        return []
+    return [m.group(0).strip() for m in _FIGURE_CAPTION_RE.finditer(text)]
 
 
 class PDFDownloader:
@@ -70,8 +180,8 @@ class PDFDownloader:
         self.cache_dir.mkdir(exist_ok=True)
         
     def _get_cache_path(self, url: str) -> Path:
-        """Generate cache file path from URL"""
-        url_hash = hashlib.md5(url.encode()).hexdigest()
+        """Generate cache file path from URL (keyed on the normalised URL)."""
+        url_hash = hashlib.md5(_normalize_arxiv_url(url).encode()).hexdigest()
         return self.cache_dir / f"{url_hash}.pdf"
     
     async def download_arxiv_pdf(self, paper_url: str) -> Optional[Path]:
@@ -118,7 +228,7 @@ class PDFDownloader:
             return cache_path
             
         except Exception as e:
-            print(f"⚠ Failed to download ArXiv PDF: {e}")
+            logger.warning("Failed to download ArXiv PDF: %s", e)
             return None
     
     async def _get_pmcid_from_pmid(self, pmid: str) -> Optional[str]:
@@ -149,7 +259,7 @@ class PDFDownloader:
         # Format: https://pubmed.ncbi.nlm.nih.gov/38218645/
         pmid_match = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", paper_url)
         if not pmid_match:
-            print(f"ℹ Could not extract PMID from {paper_url}")
+            logger.info("Could not extract PMID from %s", paper_url)
             return None
             
         pmid = pmid_match.group(1)
@@ -157,7 +267,7 @@ class PDFDownloader:
         # Get PMCID
         pmcid = await self._get_pmcid_from_pmid(pmid)
         if not pmcid:
-            print(f"ℹ No PMCID found for PMID {pmid} (Paper may not be Open Access)")
+            logger.info("No PMCID found for PMID %s (paper may not be Open Access)", pmid)
             return None
             
         # Construct PMC XML download using Entrez
@@ -193,7 +303,7 @@ class PDFDownloader:
                         text_content = "\n\n".join(paragraphs)
 
                     if not text_content.strip():
-                        print(f"ℹ No text content found in XML for {pmid}")
+                        logger.info("No text content found in XML for PMID %s", pmid)
                         return None
 
                     with open(cache_path, 'w', encoding='utf-8') as out_file:
@@ -201,13 +311,13 @@ class PDFDownloader:
 
                     return cache_path
                 except Exception as e:
-                    print(f"⚠ Failed to parse PMC XML for {pmid}: {e}")
+                    logger.warning("Failed to parse PMC XML for PMID %s: %s", pmid, e)
                     return None
 
             return await asyncio.to_thread(download)
 
         except Exception as e:
-            print(f"⚠ Failed to download PMC text for {pmid}: {e}")
+            logger.warning("Failed to download PMC text for PMID %s: %s", pmid, e)
             return None
     
     async def download_paper(self, paper: Dict) -> Optional[Path]:
@@ -228,7 +338,7 @@ class DocumentProcessor:
     
     def __init__(self):
         if not pypdf:
-            print("⚠ pypdf not installed. PDF processing disabled.")
+            logger.warning("pypdf not installed — PDF processing disabled.")
     
     async def extract_text(self, file_path: Path) -> Optional[str]:
         """Extract all text from PDF or TXT"""
@@ -257,7 +367,7 @@ class DocumentProcessor:
                 return None
                 
         except Exception as e:
-            print(f"⚠ Failed to extract text from {file_path.name}: {e}")
+            logger.warning("Failed to extract text from %s: %s", file_path.name, e)
             return None
     
     def _clean_text(self, text: str) -> str:
@@ -394,25 +504,38 @@ class SemanticChunker:
 class RAGEngine:
     """Main RAG engine orchestrating all components"""
     
-    def __init__(self, collection_name: str = "papers", persist_dir: str = "./chroma_db"):
+    def __init__(
+        self,
+        collection_name: str = "papers",
+        persist_dir: str = "./chroma_db",
+        enable_hybrid: bool = True,
+        enable_rerank: bool = True,
+    ):
         self.collection_name = collection_name
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(exist_ok=True)
-        
+        self.enable_hybrid = enable_hybrid
+        self.enable_rerank = enable_rerank
+
         # Initialize components
         self.downloader = PDFDownloader()
         self.processor = DocumentProcessor()
         self.chunker = SemanticChunker()
+
+        # Hybrid retrieval state — populated lazily by _ensure_bm25_index().
+        self._bm25 = None
+        self._bm25_dirty = True
+        self._reranker = None
         
         # Initialize embedding model
         self.embedding_model = None
         if SentenceTransformer:
             try:
-                print("📥 Loading embedding model (first run may take a minute)...")
+                logger.info("Loading embedding model (first run may take a moment)...")
                 self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-                print("✓ Embedding model loaded")
+                logger.info("Embedding model loaded.")
             except Exception as e:
-                print(f"⚠ Failed to load embedding model: {e}")
+                logger.warning("Failed to load embedding model: %s", e)
         
         # Initialize vector store
         self.chroma_client = None
@@ -427,60 +550,86 @@ class RAGEngine:
                     name=self.collection_name,
                     metadata={"description": "Scientific papers for RAG"}
                 )
-                print(f"✓ Vector database initialized: {self.collection.count()} chunks indexed")
+                logger.info("Vector database initialised: %d chunks indexed.", self.collection.count())
             except Exception as e:
-                print(f"⚠ Failed to initialize ChromaDB: {e}")
+                logger.warning("Failed to initialise ChromaDB: %s", e)
     
     async def process_papers(self, papers: List[Dict]) -> int:
         """Download, process, and index papers"""
         if not self.embedding_model or not self.collection:
-            print("⚠ RAG system not fully initialized. Skipping paper processing.")
+            logger.warning("RAG system not fully initialised — skipping paper processing.")
             return 0
-        
+
         total_chunks = 0
-        
+
         for paper in papers:
             try:
-                # Generate stable paper ID
-                paper_id = hashlib.md5(paper['url'].encode()).hexdigest()[:16]
-                
-                # BUG 4 FIX: Check if paper is already indexed to skip processing
-                if self.collection:
-                    existing = self.collection.get(
-                        where={"paper_id": paper_id},
-                        limit=1
-                    )
-                    if existing and existing['ids']:
-                        print(f"  ⏭ Skipping: {paper['title'][:60]}... (Already indexed)")
-                        continue
+                url = paper.get("url", "")
+                if not url:
+                    logger.warning("Paper '%s' has no URL — skipping.", paper.get("title", "<unknown>"))
+                    continue
 
-                print(f"📄 Processing: {paper['title'][:60]}...")
-                
+                # Generate a stable, normalised paper ID
+                paper_id = _url_to_paper_id(url)
+
+                # Skip papers already present in the vector store
+                existing = self.collection.get(
+                    where={"paper_id": paper_id},
+                    limit=1,
+                )
+                if existing and existing["ids"]:
+                    logger.info("Skipping '%s' (already indexed).", paper.get("title", url)[:60])
+                    continue
+
+                logger.info("Processing: %s", paper.get("title", url)[:60])
+
                 # Download PDF/TXT
                 file_path = await self.downloader.download_paper(paper)
                 if not file_path:
-                    print(f"  ⚠ Skipping (no PDF)")
+                    logger.warning("  Skipping '%s' — no PDF available.", paper.get("title", url)[:60])
                     continue
-                
+
                 # Extract text
                 text = await self.processor.extract_text(file_path)
                 if not text:
-                    print(f"  ⚠ Skipping (extraction failed)")
+                    logger.warning("  Skipping '%s' — text extraction failed.", paper.get("title", url)[:60])
                     continue
-                
+
                 # Chunk text
-                chunks = self.chunker.chunk_text(text, paper_id, paper['title'])
-                print(f"  ✓ Created {len(chunks)} chunks")
-                
+                chunks = self.chunker.chunk_text(text, paper_id, paper.get("title", ""))
+
+                # Enrich with extracted tables and figure captions
+                title = paper.get("title", "")
+                if file_path.suffix.lower() == ".pdf":
+                    for t_idx, tbl in enumerate(extract_tables_from_pdf(file_path)):
+                        chunks.append(DocumentChunk(
+                            text=tbl["text"],
+                            paper_id=paper_id,
+                            paper_title=title,
+                            chunk_index=len(chunks),
+                            page_number=tbl.get("page"),
+                            chunk_type="table",
+                        ))
+                for caption in extract_figure_captions(text):
+                    chunks.append(DocumentChunk(
+                        text=caption,
+                        paper_id=paper_id,
+                        paper_title=title,
+                        chunk_index=len(chunks),
+                        chunk_type="figure_caption",
+                    ))
+
+                logger.info("  Created %d chunks (text+tables+captions).", len(chunks))
+
                 # Generate embeddings and add to vector store
                 await self._index_chunks(chunks)
                 total_chunks += len(chunks)
-                
+
             except Exception as e:
-                print(f"  ⚠ Error processing paper: {e}")
+                logger.warning("Error processing paper '%s': %s", paper.get("title", ""), e)
                 continue
-        
-        print(f"\n✓ Indexed {total_chunks} total chunks from {len(papers)} papers")
+
+        logger.info("Indexed %d total chunks from %d papers.", total_chunks, len(papers))
         return total_chunks
     
     async def _index_chunks(self, chunks: List[DocumentChunk]):
@@ -495,7 +644,9 @@ class RAGEngine:
             {
                 "paper_id": chunk.paper_id,
                 "paper_title": chunk.paper_title,
-                "chunk_index": chunk.chunk_index
+                "chunk_index": chunk.chunk_index,
+                "chunk_type": chunk.chunk_type,
+                "page_number": chunk.page_number or -1,
             }
             for chunk in chunks
         ]
@@ -513,11 +664,128 @@ class RAGEngine:
             documents=texts,
             metadatas=metadatas
         )
-    
+
+        # New chunks ⇒ BM25 index needs to be rebuilt before next hybrid query.
+        self._bm25_dirty = True
+
+    # ------------------------------------------------------------------
+    # Hybrid retrieval (BM25 + dense + RRF + optional cross-encoder)
+    # ------------------------------------------------------------------
+
+    def _ensure_bm25_index(self) -> None:
+        """Build (or rebuild) the BM25 index from the current Chroma corpus."""
+        if not self.enable_hybrid or self.collection is None:
+            return
+        if self._bm25 is not None and not self._bm25_dirty:
+            return
+        try:
+            from utils.hybrid_retrieval import BM25Index
+            data = self.collection.get(include=["documents", "metadatas"])
+            ids = data.get("ids") or []
+            docs = data.get("documents") or []
+            if not ids or not docs:
+                self._bm25 = BM25Index()
+                self._bm25_dirty = False
+                return
+            idx = BM25Index()
+            for cid, text in zip(ids, docs):
+                idx.add(cid, text or "")
+            idx.build()
+            self._bm25 = idx
+            self._bm25_dirty = False
+            logger.info("BM25 index built: %d chunks.", len(idx))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("BM25 index build failed: %s — hybrid disabled.", exc)
+            self._bm25 = None
+            self._bm25_dirty = False
+
+    def _ensure_reranker(self):
+        """Lazy-load the cross-encoder reranker on first hybrid query."""
+        if not self.enable_rerank:
+            return None
+        if self._reranker is not None:
+            return self._reranker
+        try:
+            from utils.hybrid_retrieval import CrossEncoderReranker
+            self._reranker = CrossEncoderReranker()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Reranker init failed: %s", exc)
+            self._reranker = None
+        return self._reranker
+
+    async def query_hybrid(
+        self,
+        query_text: str,
+        top_k: int = 5,
+        fusion_candidates: int = 50,
+    ) -> List[Dict]:
+        """Hybrid retrieval: BM25 + dense + RRF fusion + optional rerank.
+
+        Falls back transparently to pure dense (``query``) when the BM25
+        layer is unavailable.
+        """
+        if not self.embedding_model or not self.collection:
+            logger.warning("RAG system not available.")
+            return []
+
+        from utils.hybrid_retrieval import hybrid_search
+
+        # Pull a deeper dense slate for fusion.
+        try:
+            def encode_query():
+                return self.embedding_model.encode(
+                    [query_text], convert_to_tensor=False,
+                ).tolist()
+
+            query_embedding = await asyncio.to_thread(encode_query)
+            dense_raw = self.collection.query(
+                query_embeddings=query_embedding,
+                n_results=fusion_candidates,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Hybrid query (dense leg) failed: %s", exc)
+            return []
+
+        # Build (doc_id, text) pairs in dense rank order.
+        dense_pairs: List[Tuple[str, str]] = []
+        meta_by_id: Dict[str, Dict] = {}
+        if dense_raw.get("documents"):
+            ids = dense_raw.get("ids", [[]])[0]
+            docs = dense_raw["documents"][0]
+            metas = dense_raw.get("metadatas", [[]])[0]
+            for cid, text, meta in zip(ids, docs, metas):
+                dense_pairs.append((cid, text))
+                meta_by_id[cid] = meta or {}
+
+        # Build / refresh the BM25 index, instantiate the reranker.
+        self._ensure_bm25_index()
+        reranker = self._ensure_reranker()
+
+        fused = hybrid_search(
+            query_text,
+            dense_results=dense_pairs,
+            bm25=self._bm25,
+            top_k=top_k,
+            fusion_candidates=fusion_candidates,
+            reranker=reranker,
+        )
+
+        # Format results in the same shape as ``query``.
+        out: List[Dict] = []
+        for cid, score, text in fused:
+            meta = meta_by_id.get(cid, {})
+            out.append({
+                "text": text,
+                "paper_title": meta.get("paper_title", ""),
+                "paper_id": meta.get("paper_id", ""),
+                "score": float(score),
+            })
+        return out
+
     async def query(self, query_text: str, top_k: int = 5) -> List[Dict]:
         """Semantic search over indexed papers"""
         if not self.embedding_model or not self.collection:
-            print("⚠ RAG system not available")
+            logger.warning("RAG system not available.")
             return []
         
         try:
@@ -547,9 +815,17 @@ class RAGEngine:
             return formatted_results
             
         except Exception as e:
-            print(f"⚠ Query failed: {e}")
+            logger.warning("RAG query failed: %s", e)
             return []
     
+    def is_paper_indexed(self, paper_url: str) -> bool:
+        """Return True if the paper identified by *paper_url* is already in the vector store."""
+        if not self.collection:
+            return False
+        paper_id = _url_to_paper_id(paper_url)
+        existing = self.collection.get(where={"paper_id": paper_id}, limit=1)
+        return bool(existing and existing["ids"])
+
     def get_stats(self) -> Dict:
         """Get RAG system statistics"""
         if not self.collection:

@@ -32,6 +32,47 @@ class ExperimentAgent(BaseAgent):
         super().__init__(use_local_llm=use_local_llm)
         self.experiments_run = 0
 
+    async def feasibility_check(
+        self,
+        hypothesis: Hypothesis,
+        effect_size: float = 0.5,
+        alpha: float = 0.05,
+        power: float = 0.80,
+    ) -> Dict[str, Any]:
+        """Estimate sample size and validate biomedical entities mentioned.
+
+        See :mod:`utils.experiment_sandbox` for the underlying machinery.
+        Useful as a pre-flight check before running a full LLM-generated
+        experiment: a hypothesis whose entities are unresolvable, or whose
+        required sample size is impractical, can be flagged early.
+        """
+        from utils.experiment_sandbox import (
+            estimate_required_n,
+            feasibility_summary,
+            validate_entities,
+        )
+
+        text = " ".join([
+            hypothesis.title or "",
+            hypothesis.description or "",
+            hypothesis.mechanism or "",
+            " ".join(hypothesis.testable_predictions or []),
+        ])
+        try:
+            entities = await validate_entities(text)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Entity validation failed: %s", exc)
+            entities = []
+
+        n = estimate_required_n(effect_size, alpha=alpha, power=power)
+        summary = feasibility_summary(n, entities)
+        logger.info(
+            "Feasibility for '%s': n=%s, %d/%d entities verified.",
+            (hypothesis.title or "")[:40], n,
+            summary["n_entities_verified"], summary["n_entities_total"],
+        )
+        return summary
+
     async def run_experiment(self, hypothesis: Hypothesis, goal: ResearchGoal) -> str:
         if not self.llm_client:
             return "Simulation skipped: No LLM available for experimental design."

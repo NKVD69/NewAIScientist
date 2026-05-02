@@ -37,6 +37,9 @@ class ContextMemory:
     literature_context: List[Dict] = field(default_factory=list)   # Retrieved papers
     meta_reviews: List[Dict] = field(default_factory=list)          # Meta-review results
     last_update: str = field(default_factory=lambda: datetime.now().isoformat())
+    # Per-source ISO timestamp of the last successful literature search.
+    # Used by ``LiteratureAgent.refresh()`` to fetch only the delta.
+    literature_last_seen: Dict[str, str] = field(default_factory=dict)
 
     # --- v3.0 Phase tracking ---
     current_phase: str = "scoping"

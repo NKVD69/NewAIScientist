@@ -31,6 +31,7 @@ from models import (
     TournamentMatch,
     ContextMemory,
     AnalysisPlan,
+    UserFeedback,
 )
 from agents import (
     LiteratureAgent,
@@ -255,22 +256,69 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         print(f"✓ Completed {len(reviews)} reviews")
         return reviews
 
-    async def run_tournament_cycle(self, num_matches: int = 5) -> List[TournamentMatch]:
-        """Conduct tournament matches."""
-        print(f"\n🏆 Running tournament matches...")
+    async def run_tournament_cycle(
+        self,
+        num_matches: int = 5,
+        pairing: str = "information_gain",
+    ) -> List[TournamentMatch]:
+        """Conduct tournament matches.
+
+        ``pairing`` is one of:
+          - ``"information_gain"`` (default): pick pairs whose Elo predicts a
+            coin-flip, penalised by their match count this tournament.
+          - ``"swiss"``: classic Swiss-system top-down pairing.
+          - ``"random"``: legacy uniform-random fallback.
+        """
+        print(f"\n🏆 Running tournament matches (pairing={pairing})...")
         hyp_list = list(self.context_memory.hypotheses.values())
         if len(hyp_list) < 2:
             print("  ⚠ Need at least 2 hypotheses for tournament")
             return []
 
         reviewed = [h for h in hyp_list if len(h.reviews) > 0]
+        pool = reviewed if len(reviewed) >= 2 else hyp_list
+        by_id = {h.id: h for h in pool}
+
+        # Build the list of pairs we want to play.
+        history_pairs = [
+            (m.hypothesis_a_id, m.hypothesis_b_id)
+            for m in self.context_memory.tournament_history
+        ]
+        competitors = [(h.id, h.elo_rating) for h in pool]
+
+        if pairing == "swiss":
+            from utils.tournament_pairing import swiss_pairing
+            pair_plan: list = []
+            played = list(history_pairs)
+            # Run Swiss rounds until we have enough matches
+            while len(pair_plan) < num_matches:
+                round_pairs = swiss_pairing(competitors, history=played)
+                if not round_pairs:
+                    break
+                for p in round_pairs:
+                    if len(pair_plan) >= num_matches:
+                        break
+                    pair_plan.append(p)
+                    played.append(p)
+        elif pairing == "information_gain":
+            from utils.tournament_pairing import information_gain_pairing
+            pair_plan = information_gain_pairing(
+                competitors, num_matches=num_matches, history=history_pairs,
+            )
+        else:  # "random" / legacy
+            pair_plan = []
+            for _ in range(num_matches):
+                if len(pool) < 2:
+                    break
+                a = random.choice(pool)
+                b = random.choice([h for h in pool if h.id != a.id])
+                pair_plan.append((a.id, b.id))
+
         matches = []
-        for _ in range(min(num_matches, len(reviewed) * 2)):
-            pool = reviewed if len(reviewed) >= 2 else hyp_list
-            if len(pool) < 2:
-                break
-            hyp_a = random.choice(pool)
-            hyp_b = random.choice([h for h in pool if h.id != hyp_a.id])
+        for a_id, b_id in pair_plan:
+            hyp_a, hyp_b = by_id.get(a_id), by_id.get(b_id)
+            if hyp_a is None or hyp_b is None:
+                continue
             winner_id, match = await self.ranking_agent.conduct_tournament_match(hyp_a, hyp_b)
             matches.append(match)
             self.context_memory.tournament_history.append(match)
@@ -306,6 +354,57 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
             result = await self.experiment_agent.run_experiment(hyp, self.context_memory.research_goal)
             results.append(result)
         return results
+
+    # ------------------------------------------------------------------
+    # PHASE 3.5: INTERACTIVE FEEDBACK LOOP
+    # ------------------------------------------------------------------
+
+    async def run_interactive_feedback_cycle(
+        self,
+        top_n: int = 3,
+        feedbacks: Optional[List[UserFeedback]] = None,
+    ) -> List[Hypothesis]:
+        """Inject scientist feedback into hypothesis evolution.
+
+        If ``feedbacks`` is provided, those entries drive the cycle (for
+        non-interactive callers and tests). Otherwise the CLI driver is
+        invoked over the top ``top_n`` hypotheses by Elo.
+
+        Returns the list of newly-evolved hypotheses (may be empty).
+        """
+        top = sorted(
+            self.context_memory.hypotheses.values(),
+            key=lambda h: h.elo_rating,
+            reverse=True,
+        )[:top_n]
+        if not top:
+            logger.info("No hypotheses available for interactive feedback.")
+            return []
+
+        if feedbacks is None:
+            from utils.interactive_feedback import collect_feedback_cli
+            feedbacks = collect_feedback_cli(top)
+
+        evolved: List[Hypothesis] = []
+        by_id = {h.id: h for h in top}
+        for fb in feedbacks:
+            hyp = by_id.get(fb.hypothesis_id)
+            if hyp is None:
+                logger.warning("Feedback for unknown hypothesis %s — ignored.", fb.hypothesis_id)
+                continue
+            new_hyp = await self.evolution_agent.evolve_with_feedback(hyp, fb)
+            if new_hyp is not None:
+                self.context_memory.hypotheses[new_hyp.id] = new_hyp
+                evolved.append(new_hyp)
+            elif fb.verdict == "disagree":
+                # Mark the rejected hypothesis so downstream cycles deprioritise it.
+                hyp.elo_rating = max(0.0, hyp.elo_rating - 200.0)
+
+        logger.info(
+            "Interactive feedback: %d feedbacks ⇒ %d evolved hypotheses.",
+            len(feedbacks), len(evolved),
+        )
+        return evolved
 
     async def run_meta_review_cycle(self) -> Dict[str, Any]:
         """Meta-review: synthesize insights across all hypotheses."""
@@ -540,6 +639,20 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
 
 async def main():
     """Main execution function."""
+    import argparse
+    parser = argparse.ArgumentParser(description="NewAI Scientist v3.0")
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Pause after hypothesis generation to collect scientist feedback "
+             "(verdict + free-text refinement) before proceeding to writing.",
+    )
+    parser.add_argument(
+        "--iterations", type=int, default=3,
+        help="Number of review/tournament/evolution iterations.",
+    )
+    args, _ = parser.parse_known_args()
+
     co_scientist = CoScientist()
 
     await co_scientist.initialize_research_goal(
@@ -558,7 +671,14 @@ async def main():
         ],
     )
 
-    await co_scientist.run_full_cycle(num_iterations=3)
+    await co_scientist.run_full_cycle(num_iterations=args.iterations)
+
+    if args.interactive:
+        print("\n" + "=" * 70)
+        print("🧑‍🔬 INTERACTIVE FEEDBACK LOOP")
+        print("=" * 70)
+        await co_scientist.run_interactive_feedback_cycle(top_n=3)
+
     co_scientist.export_hypotheses_json("co_scientist_results.json")
 
     print("\n" + "=" * 70)

@@ -3,15 +3,19 @@ Data models for the NewAIScientist system.
 Re-exports all core dataclasses for convenience.
 """
 from .hypothesis import (
+    Claim,
+    Evidence,
     Hypothesis,
     HypothesisStatus,
     HypothesisLink,
+    Prediction,
     ReviewCritique,
     ResearchGoal,
     ResearchQuestion,
     ScoredQuestion,
     StateOfArt,
     StudyPhase,
+    UserFeedback,
     VariableRole,
     Variable,
     ExperimentalProtocol,
@@ -34,9 +38,13 @@ __all__ = [
     "ScoredQuestion",
     "StateOfArt",
     # Hypothesis
+    "Claim",
+    "Evidence",
     "Hypothesis",
     "HypothesisLink",
+    "Prediction",
     "ReviewCritique",
+    "UserFeedback",
     # Experimental
     "Variable",
     "ExperimentalProtocol",
