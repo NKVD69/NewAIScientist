@@ -75,6 +75,7 @@ class CoScientist:
     """Main AI co-scientist system coordinator — pure orchestration, no agent logic."""
 
     def __init__(self, use_local_llm: bool = True, enable_rag: bool = True):
+        self.name = "Orchestrator"
         self.context_memory = ContextMemory()
         self.supervisor = SupervisorAgent()
 
@@ -101,7 +102,7 @@ class CoScientist:
             self.proximity_agent, self.evolution_agent, self.meta_review_agent,
             self.literature_agent, self.graph_agent, self.experiment_agent,
             self.scoping_agent, self.protocol_agent, self.analysis_agent,
-            self.writing_agent,
+            self.writing_agent, self,
         ]:
             self.supervisor.register_agent(agent)
 
@@ -504,45 +505,50 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         return manuscript
 
     # ------------------------------------------------------------------
+    async def run_proximity_cycle(self):
+        """Wrapper for computing proximity to be called via task queue."""
+        print(f"\n🔗 Computing hypothesis proximity...")
+        await self.proximity_agent.compute_proximity(
+            list(self.context_memory.hypotheses.values()),
+        )
+
+    async def run_meta_review_and_status(self, iteration: int):
+        """Wrapper for meta review and status printing to be called via task queue."""
+        meta_review = await self.run_meta_review_cycle()
+        self._print_iteration_status(iteration, meta_review)
+        return meta_review
+
+    # ------------------------------------------------------------------
     # FULL WORKFLOW
     # ------------------------------------------------------------------
 
     async def run_full_cycle(self, num_iterations: int = 3):
-        """Run complete co-scientist workflow (v3.0 Extended)."""
+        """Run complete co-scientist workflow (v3.0 Extended) using the task queue."""
         print("\n" + "=" * 70)
-        print("🤖 NewAI Scientist v3.0 WORKFLOW STARTED")
+        print("🤖 NewAI Scientist v3.0 WORKFLOW STARTED (DAG Orchestration)")
         print("=" * 70)
 
-        # Phase 2 → Literature
-        await self.run_literature_search()
-        # Phase 1 → Scoping
-        await self.run_scoping_cycle()
-        # Phase 3 → Hypotheses
-        await self.run_hypothesis_generation_cycle(num_hypotheses=5)
+        # Queue initial phases
+        self.supervisor.queue_task("Orchestrator", "run_literature_search", {}, priority=1)
+        self.supervisor.queue_task("Orchestrator", "run_scoping_cycle", {}, priority=2)
+        self.supervisor.queue_task("Orchestrator", "run_hypothesis_generation_cycle", {"num_hypotheses": 5}, priority=3)
 
         for iteration in range(num_iterations):
-            print(f"\n{'=' * 70}")
-            print(f"ITERATION {iteration + 1}/{num_iterations}")
-            print(f"{'=' * 70}")
+            base_prio = 10 + (iteration * 10)
+            self.supervisor.queue_task("Orchestrator", "run_review_cycle", {}, priority=base_prio + 1)
+            self.supervisor.queue_task("Orchestrator", "run_proximity_cycle", {}, priority=base_prio + 2)
+            self.supervisor.queue_task("Orchestrator", "run_tournament_cycle", {"num_matches": 4}, priority=base_prio + 3)
+            self.supervisor.queue_task("Orchestrator", "run_evolution_cycle", {}, priority=base_prio + 4)
+            self.supervisor.queue_task("Orchestrator", "run_meta_review_and_status", {"iteration": iteration + 1}, priority=base_prio + 5)
 
-            await self.run_review_cycle()
+        # Queue final phases
+        final_prio = 1000
+        self.supervisor.queue_task("Orchestrator", "run_protocol_cycle", {}, priority=final_prio)
+        self.supervisor.queue_task("Orchestrator", "run_writing_cycle", {}, priority=final_prio + 1)
+        self.supervisor.queue_task("Orchestrator", "_print_final_summary", {}, priority=final_prio + 2)
 
-            print(f"\n🔗 Computing hypothesis proximity...")
-            await self.proximity_agent.compute_proximity(
-                list(self.context_memory.hypotheses.values()),
-            )
-
-            await self.run_tournament_cycle(num_matches=4)
-            await self.run_evolution_cycle()
-            meta_review = await self.run_meta_review_cycle()
-            self._print_iteration_status(iteration + 1, meta_review)
-
-        # Phase 4 → Protocol
-        await self.run_protocol_cycle()
-        # Phase 6 → Writing
-        await self.run_writing_cycle()
-
-        await self._print_final_summary()
+        # Execute the queued tasks via SupervisorAgent
+        await self.supervisor.execute_task_queue(max_iterations=100)
 
     # ------------------------------------------------------------------
     # STATUS & EXPORT

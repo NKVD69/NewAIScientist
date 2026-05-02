@@ -129,37 +129,44 @@ class ExperimentAgent(BaseAgent):
             env = os.environ.copy()
             for key in ('OPENAI_API_KEY', 'NCBI_API_KEY', 'ANTHROPIC_API_KEY'):
                 env.pop(key, None)
+            
+            # Remove network-related env vars to partially restrict network access
+            env.pop('HTTP_PROXY', None)
+            env.pop('HTTPS_PROXY', None)
 
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
-                f.write(code)
-                script_path = f.name
+            # Execution in isolated directory
+            with tempfile.TemporaryDirectory() as temp_dir:
+                script_path = os.path.join(temp_dir, 'experiment.py')
+                with open(script_path, 'w', encoding='utf-8') as f:
+                    f.write(code)
 
-            try:
-                result = await asyncio.to_thread(
-                    subprocess.run,
-                    [sys.executable, '-S', script_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    env=env
-                )
+                # Future extension: if getattr(config, 'USE_DOCKER', False):
+                #     write Dockerfile and execute via `docker build` and `docker run --network none`
 
-                output = result.stdout
-                if result.stderr:
-                    output += f"\nErrors/Warnings:\n{result.stderr}"
+                try:
+                    result = await asyncio.to_thread(
+                        subprocess.run,
+                        [sys.executable, '-S', script_path],
+                        cwd=temp_dir,  # Isolate file operations
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        env=env
+                    )
 
-                if not output.strip():
-                    output = "Script ran successfully but produced no output."
-                    
-                hypothesis.experimental_results = f"Experimental Results:\n{output[:1500]}"
-                self.experiments_run += 1
-                return hypothesis.experimental_results
-            except subprocess.TimeoutExpired:
-                hypothesis.experimental_results = "Experiment simulation timed out after 30 seconds."
-                return hypothesis.experimental_results
-            finally:
-                if os.path.exists(script_path):
-                    os.remove(script_path)
+                    output = result.stdout
+                    if result.stderr:
+                        output += f"\nErrors/Warnings:\n{result.stderr}"
+
+                    if not output.strip():
+                        output = "Script ran successfully but produced no output."
+                        
+                    hypothesis.experimental_results = f"Experimental Results:\n{output[:1500]}"
+                    self.experiments_run += 1
+                    return hypothesis.experimental_results
+                except subprocess.TimeoutExpired:
+                    hypothesis.experimental_results = "Experiment simulation timed out after 30 seconds."
+                    return hypothesis.experimental_results
                     
         except Exception as e:
             hypothesis.experimental_results = f"Experiment implementation failed: {e}"
