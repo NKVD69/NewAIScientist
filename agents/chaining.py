@@ -1,6 +1,6 @@
 import logging
-from typing import List, Dict
-from models import Hypothesis, ResearchGoal, ContextMemory
+
+from models import Hypothesis, ResearchGoal
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +13,12 @@ class HypothesisChainingAgent:
         self.model_name = model_name
         self.chains_discovered = 0
 
-    async def identify_links(self, hypotheses: List[Hypothesis], goal: ResearchGoal) -> List[Dict]:
+    async def identify_links(self, hypotheses: list[Hypothesis], goal: ResearchGoal) -> list[dict]:
         """
         Analyzes a set of hypotheses and identifies dependencies or refinement links.
         """
         logger.info("ChainingAgent is looking for connections among %d hypotheses...", len(hypotheses))
-        
+
         # Simplified logic for finding links
         links = []
         if len(hypotheses) >= 2:
@@ -29,11 +29,11 @@ class HypothesisChainingAgent:
                 "type": "refines",
                 "reason": "H2 specifies the molecular sub-target identified in H1's broader pathway."
             })
-            
+
         self.chains_discovered += len(links)
         return links
 
-    async def synthesize_chain(self, chain: List[Hypothesis]) -> str:
+    async def synthesize_chain(self, chain: list[Hypothesis]) -> str:
         """
         Synthesizes a master narrative for a chain of hypotheses.
         """

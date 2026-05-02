@@ -19,7 +19,7 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def _strip_doi_tail(doi: str) -> str:
     return doi.rstrip(".,;:)]>\"'")
 
 
-def extract_citation_ids(text: str) -> Dict[str, List[str]]:
+def extract_citation_ids(text: str) -> dict[str, list[str]]:
     """Pull candidate citation identifiers out of free-form text.
 
     Returns a dict with three deduplicated lists, one per scheme:
@@ -89,7 +89,7 @@ class CitationResult:
     source_url: str = ""
     error: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -181,7 +181,7 @@ async def verify_text(
     text: str,
     timeout: float = 5.0,
     max_concurrent: int = 8,
-) -> List[CitationResult]:
+) -> list[CitationResult]:
     """Extract every citation identifier in *text* and verify them in parallel."""
     ids = extract_citation_ids(text)
 
@@ -215,12 +215,12 @@ def hypothesis_text(hyp: Any) -> str:
     return "\n".join(p for p in parts if p)
 
 
-async def verify_hypothesis(hyp: Any, timeout: float = 5.0) -> List[CitationResult]:
+async def verify_hypothesis(hyp: Any, timeout: float = 5.0) -> list[CitationResult]:
     """Verify every citation found inside a Hypothesis object."""
     return await verify_text(hypothesis_text(hyp), timeout=timeout)
 
 
-def verification_score(results: List[CitationResult]) -> float:
+def verification_score(results: list[CitationResult]) -> float:
     """Fraction of resolved citations.
 
     Returns 1.0 when no citations were extracted (treated as a neutral case
@@ -234,7 +234,7 @@ def verification_score(results: List[CitationResult]) -> float:
 
 def apply_verification_penalty(
     elo_rating: float,
-    results: List[CitationResult],
+    results: list[CitationResult],
     max_penalty: float = 200.0,
 ) -> float:
     """Subtract from the Elo a penalty proportional to unverified citations.

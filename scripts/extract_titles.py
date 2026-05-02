@@ -1,6 +1,6 @@
 
-import os
 from pathlib import Path
+
 try:
     import pypdf
 except ImportError:
@@ -29,7 +29,7 @@ if __name__ == "__main__":
             continue
         title = extract_title_from_pdf(pdf_file)
         results[pdf_file.name] = title
-    
+
     import json
     with open('paper_titles_from_content.json', 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)

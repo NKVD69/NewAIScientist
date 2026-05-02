@@ -5,20 +5,20 @@ Fully offline — LLM is stubbed out.
 """
 
 import asyncio
-import pytest
-import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from models.hypothesis import Hypothesis, HypothesisStatus, ReviewCritique, ResearchGoal
-from models.memory import ContextMemory, TournamentMatch
+import pytest
+import pytest_asyncio
+
 from co_scientist import (
+    EvolutionAgent,
+    MetaReviewAgent,
     ProximityAgent,
     RankingAgent,
     ReflectionAgent,
-    MetaReviewAgent,
-    EvolutionAgent,
 )
-
+from models.hypothesis import Hypothesis, HypothesisStatus, ResearchGoal, ReviewCritique
+from models.memory import ContextMemory, TournamentMatch
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -74,7 +74,7 @@ class TestProximityAgent:
 
         prox = asyncio.run(agent.compute_proximity(hypotheses))
         assert len(prox) == 3
-        for hyp_id, neighbors in prox.items():
+        for _hyp_id, neighbors in prox.items():
             # Should have n-1 neighbors
             assert len(neighbors) == 2
             # Neighbors sorted by similarity (descending)

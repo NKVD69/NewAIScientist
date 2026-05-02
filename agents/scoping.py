@@ -10,17 +10,16 @@ Responsible for:
 
 from __future__ import annotations
 
-import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from models.hypothesis import (
     ResearchGoal,
     ResearchQuestion,
     StateOfArt,
-    ScoredQuestion,
 )
-from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from utils.llm import get_llm_completion, parse_json_response
+
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,7 @@ class ScopingAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     async def analyze_state_of_art(
-        self, papers: List[Dict], goal: ResearchGoal
+        self, papers: list[dict], goal: ResearchGoal
     ) -> StateOfArt:
         """Synthesize retrieved papers into known facts, gaps, contradictions."""
         if not self.llm_client or not papers:
@@ -84,7 +83,7 @@ Return ONLY the JSON."""
             return self._fallback_state_of_art(papers, goal)
 
     def _fallback_state_of_art(
-        self, papers: List[Dict], goal: ResearchGoal
+        self, papers: list[dict], goal: ResearchGoal
     ) -> StateOfArt:
         """Simple fallback when LLM is unavailable."""
         return StateOfArt(
@@ -100,7 +99,7 @@ Return ONLY the JSON."""
 
     async def generate_research_questions(
         self, state_of_art: StateOfArt, goal: ResearchGoal
-    ) -> List[ResearchQuestion]:
+    ) -> list[ResearchQuestion]:
         """Generate structured research questions from the state of the art."""
         if not self.llm_client:
             return self._fallback_questions(state_of_art, goal)
@@ -171,7 +170,7 @@ Return ONLY the JSON list."""
 
     def _fallback_questions(
         self, state_of_art: StateOfArt, goal: ResearchGoal
-    ) -> List[ResearchQuestion]:
+    ) -> list[ResearchQuestion]:
         """Deterministic fallback questions derived from gaps."""
         questions = []
         for gap in state_of_art.gaps[:3]:
@@ -197,8 +196,8 @@ Return ONLY the JSON list."""
     # ------------------------------------------------------------------
 
     async def build_conceptual_framework(
-        self, questions: List[ResearchQuestion], goal: ResearchGoal
-    ) -> Dict[str, Any]:
+        self, questions: list[ResearchQuestion], goal: ResearchGoal
+    ) -> dict[str, Any]:
         """Build a causal DAG conceptual framework from research questions."""
         if not self.llm_client or not questions:
             return self._fallback_framework(questions, goal)
@@ -247,8 +246,8 @@ Return ONLY the JSON."""
             return self._fallback_framework(questions, goal)
 
     def _fallback_framework(
-        self, questions: List[ResearchQuestion], goal: ResearchGoal
-    ) -> Dict[str, Any]:
+        self, questions: list[ResearchQuestion], goal: ResearchGoal
+    ) -> dict[str, Any]:
         """Minimal fallback framework."""
         return {
             "variables": [
@@ -266,8 +265,8 @@ Return ONLY the JSON."""
     # ------------------------------------------------------------------
 
     async def score_questions(
-        self, questions: List[ResearchQuestion]
-    ) -> List[ResearchQuestion]:
+        self, questions: list[ResearchQuestion]
+    ) -> list[ResearchQuestion]:
         """Score each question on novelty × feasibility × impact."""
         if not self.llm_client or not questions:
             # Assign default scores

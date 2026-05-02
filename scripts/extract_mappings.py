@@ -1,15 +1,16 @@
 
-import chromadb
 import json
 import os
-from pathlib import Path
+
+import chromadb
+
 
 def get_paper_mappings():
     persist_dir = 'c:/Users/Windows/PycharmProjects/NewAIScientist/chroma_db'
     if not os.path.exists(persist_dir):
         print(f"Error: {persist_dir} does not exist")
         return {}
-    
+
     client = chromadb.PersistentClient(path=persist_dir)
     try:
         collection = client.get_collection('papers')
@@ -24,7 +25,7 @@ def get_paper_mappings():
         p_title = meta.get('paper_title')
         if p_id and p_title:
             mappings[p_id] = p_title
-            
+
     return mappings
 
 if __name__ == "__main__":

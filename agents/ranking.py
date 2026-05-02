@@ -11,15 +11,15 @@ from __future__ import annotations
 
 import logging
 import random
-from typing import Any, Dict, List, Optional, Tuple
 
 from models.hypothesis import Hypothesis
 from models.memory import TournamentMatch
 from utils.citation_verifier import (
-    verify_hypothesis,
     verification_score,
+    verify_hypothesis,
 )
 from utils.llm import ensure_str, get_llm_completion, parse_json_response
+
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class RankingAgent(BaseAgent):
         self,
         use_local_llm: bool = True,
         verify_citations: bool = True,
-        criteria_weights: Optional[Dict[str, float]] = None,
+        criteria_weights: dict[str, float] | None = None,
     ):
         super().__init__(use_local_llm=use_local_llm)
         self.k_factor = 32  # Elo K-factor
@@ -50,17 +50,17 @@ class RankingAgent(BaseAgent):
         # When True, citation verification adjusts the per-match Elo update.
         self.verify_citations = verify_citations
         # Cached score per hypothesis ID to avoid re-hitting the network.
-        self._citation_cache: Dict[str, float] = {}
+        self._citation_cache: dict[str, float] = {}
         # Multi-criterion judge configuration. Weights re-normalise to sum=1.
         self.criteria_weights = self._normalise_weights(
             criteria_weights or self.DEFAULT_CRITERIA_WEIGHTS,
         )
         # Multi-dimensional Elo per hypothesis: per-criterion ratings.
         # populated lazily by _multi_judge.
-        self.multi_elo: Dict[str, Dict[str, float]] = {}
+        self.multi_elo: dict[str, dict[str, float]] = {}
 
     @staticmethod
-    def _normalise_weights(weights: Dict[str, float]) -> Dict[str, float]:
+    def _normalise_weights(weights: dict[str, float]) -> dict[str, float]:
         total = sum(max(0.0, v) for v in weights.values()) or 1.0
         return {k: max(0.0, v) / total for k, v in weights.items()}
 
@@ -82,10 +82,10 @@ class RankingAgent(BaseAgent):
             score = 1.0
         self._citation_cache[hyp.id] = score
         return score
-    
+
     async def conduct_tournament_match(self,
                                       hyp_a: Hypothesis,
-                                      hyp_b: Hypothesis) -> Tuple[str, TournamentMatch]:
+                                      hyp_b: Hypothesis) -> tuple[str, TournamentMatch]:
         """
         Conduct pairwise hypothesis comparison through simulated scientific debate.
         Returns winner ID and match record.
@@ -99,17 +99,17 @@ class RankingAgent(BaseAgent):
 
         # Update Elo ratings (modulated by citation trust)
         self._update_elo_ratings(hyp_a, hyp_b, winner_id, cit_a, cit_b)
-        
+
         match = TournamentMatch(
             hypothesis_a_id=hyp_a.id,
             hypothesis_b_id=hyp_b.id,
             winner_id=winner_id,
             debate_summary=debate_summary
         )
-        
+
         self.matches_completed += 1
         return winner_id, match
-    
+
     async def _simulate_debate(self, hyp_a: Hypothesis, hyp_b: Hypothesis) -> str:
         """
         Determine the winning hypothesis via multi-criterion LLM-as-judge
@@ -143,7 +143,7 @@ class RankingAgent(BaseAgent):
         self,
         hyp_a: Hypothesis,
         hyp_b: Hypothesis,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Single LLM call returning per-criterion winners.
 
         Returns a dict ``{criterion: winning_id}`` covering at least one of
@@ -179,7 +179,7 @@ class RankingAgent(BaseAgent):
         )
         data = parse_json_response(response.choices[0].message.content)
         raw = data.get("verdicts") or {}
-        out: Dict[str, str] = {}
+        out: dict[str, str] = {}
         for crit in criteria:
             v = str(raw.get(crit, "")).strip().upper()
             if v == "A" or v == hyp_a.id:
@@ -192,7 +192,7 @@ class RankingAgent(BaseAgent):
         self,
         a_id: str,
         b_id: str,
-        verdicts: Dict[str, str],
+        verdicts: dict[str, str],
     ) -> str:
         """Reduce per-criterion verdicts to a single winner via weighted vote."""
         score_a = sum(
@@ -208,7 +208,7 @@ class RankingAgent(BaseAgent):
         self,
         hyp_a: Hypothesis,
         hyp_b: Hypothesis,
-        verdicts: Dict[str, str],
+        verdicts: dict[str, str],
     ) -> None:
         """Update per-criterion Elo ratings stored in self.multi_elo."""
         for criterion, winner in verdicts.items():
@@ -221,7 +221,7 @@ class RankingAgent(BaseAgent):
             self.multi_elo.setdefault(hyp_a.id, {})[criterion] = ra + self.k_factor * (sa - ea)
             self.multi_elo.setdefault(hyp_b.id, {})[criterion] = rb + self.k_factor * (sb - eb)
 
-    async def _llm_debate(self, hyp_a: Hypothesis, hyp_b: Hypothesis) -> Optional[str]:
+    async def _llm_debate(self, hyp_a: Hypothesis, hyp_b: Hypothesis) -> str | None:
         """Use the LLM as scientific judge to compare two hypotheses."""
         prompt = f"""
         You are a senior scientific reviewer adjudicating a research hypothesis competition.
@@ -257,7 +257,7 @@ class RankingAgent(BaseAgent):
             logger.debug("LLM judge chose B (%s): %s", hyp_b.id, data.get('reasoning', ''))
             return hyp_b.id
         return None
-    
+
     def _compute_debate_score(self, hypothesis: Hypothesis) -> float:
         score = 0.5
         if hypothesis.reviews:
@@ -272,7 +272,7 @@ class RankingAgent(BaseAgent):
         }
         score += novelty_bonus.get(hypothesis.novelty_level, 0.02)
         return min(1.0, max(0.0, score))
-    
+
     def _update_elo_ratings(
         self,
         hyp_a: Hypothesis,
@@ -301,7 +301,7 @@ class RankingAgent(BaseAgent):
         else:
             hyp_a.elo_rating += self.k_factor * trust_a * (0 - expected_a)
             hyp_b.elo_rating += self.k_factor * trust_b * (1 - expected_b)
-    
+
     def _generate_debate_summary(self, hyp_a: Hypothesis, hyp_b: Hypothesis, winner_id: str) -> str:
         winner = hyp_a if winner_id == hyp_a.id else hyp_b
         loser = hyp_b if winner_id == hyp_a.id else hyp_a

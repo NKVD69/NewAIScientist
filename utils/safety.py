@@ -4,7 +4,6 @@ AST-based code safety utilities for the ExperimentAgent.
 
 import ast
 import logging
-from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ DANGEROUS_MODULES: frozenset = frozenset({
 })
 
 
-def check_code_safety(code: str) -> Tuple[bool, str]:
+def check_code_safety(code: str) -> tuple[bool, str]:
     """
     AST-based safety check for LLM-generated experimental code.
 

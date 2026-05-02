@@ -5,23 +5,18 @@ Provides REST endpoints for all 6 workflow phases + session management.
 Designed to be consumed by the React frontend.
 """
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from dataclasses import asdict
-import os
 import json
-import uvicorn
-from typing import Dict, List, Any, Optional
-from pydantic import BaseModel
+import os
+from dataclasses import asdict
 from datetime import datetime
+from typing import Optional
+
+import uvicorn
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from co_scientist import CoScientist
-from models import (
-    ResearchGoal,
-    Hypothesis,
-    StudyPhase,
-    HypothesisStatus,
-)
 
 app = FastAPI(
     title="NewAI Scientist API",
@@ -53,13 +48,13 @@ class GoalInput(BaseModel):
     title: str
     description: str
     domain: str
-    preferences: Optional[Dict] = {}
-    constraints: Optional[List[str]] = []
+    preferences: Optional[dict] = {}
+    constraints: Optional[list[str]] = []
 
 
 class LiteratureInput(BaseModel):
     max_results: int = 5
-    sources: List[str] = ["arxiv"]
+    sources: list[str] = ["arxiv"]
     iterations: int = 2
 
 
@@ -306,7 +301,7 @@ async def save_session(name: str = "default"):
             json.dump(data, f, indent=2, default=str)
         return {"status": "saved", "path": path}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/session/list")
@@ -318,7 +313,7 @@ async def list_sessions():
         if fname.endswith(".json"):
             path = os.path.join(SESSIONS_DIR, fname)
             try:
-                with open(path, "r") as f:
+                with open(path) as f:
                     data = json.load(f)
                 sessions.append({
                     "name": fname.replace(".json", ""),
@@ -334,7 +329,7 @@ async def list_sessions():
 async def export_json():
     """Export all hypotheses as JSON."""
     scientist.export_hypotheses_json("export.json")
-    with open("export.json", "r") as f:
+    with open("export.json") as f:
         return json.load(f)
 
 

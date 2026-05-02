@@ -3,15 +3,14 @@ RAG System for Scientific Literature Analysis
 Provides advanced document retrieval and semantic search capabilities
 """
 
-import os
 import asyncio
-import logging
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple
-from dataclasses import dataclass
-import urllib.request
 import hashlib
+import logging
 import re
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
 import config
 
@@ -82,7 +81,6 @@ except ImportError:
 # Vector database
 try:
     import chromadb
-    from chromadb.config import Settings
 except ImportError:
     chromadb = None
 
@@ -110,7 +108,7 @@ class DocumentChunk:
     page_number: Optional[int] = None
     section: Optional[str] = None
     chunk_type: str = "text"   # "text" | "table" | "figure_caption"
-    metadata: Dict = None
+    metadata: dict = None
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +135,7 @@ def _serialise_table(rows) -> str:
     return "\n".join(out_lines)
 
 
-def extract_tables_from_pdf(file_path) -> List[Dict]:
+def extract_tables_from_pdf(file_path) -> list[dict]:
     """Extract every table from a PDF as ``{page, text}`` records.
 
     Uses pdfplumber when available; returns ``[]`` otherwise. Empty tables
@@ -145,7 +143,7 @@ def extract_tables_from_pdf(file_path) -> List[Dict]:
     """
     if pdfplumber is None:
         return []
-    out: List[Dict] = []
+    out: list[dict] = []
     try:
         with pdfplumber.open(str(file_path)) as pdf:
             for page_num, page in enumerate(pdf.pages, start=1):
@@ -161,7 +159,7 @@ def extract_tables_from_pdf(file_path) -> List[Dict]:
     return out
 
 
-def extract_figure_captions(text: str) -> List[str]:
+def extract_figure_captions(text: str) -> list[str]:
     """Find figure / table captions in raw extracted PDF text.
 
     Returns the full caption lines (including the leading "Figure N:" so
@@ -174,28 +172,28 @@ def extract_figure_captions(text: str) -> List[str]:
 
 class PDFDownloader:
     """Downloads PDFs from ArXiv and PubMed"""
-    
+
     def __init__(self, cache_dir: str = "./papers"):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
-        
+
     def _get_cache_path(self, url: str) -> Path:
         """Generate cache file path from URL (keyed on the normalised URL)."""
         url_hash = hashlib.md5(_normalize_arxiv_url(url).encode()).hexdigest()
         return self.cache_dir / f"{url_hash}.pdf"
-    
+
     async def download_arxiv_pdf(self, paper_url: str) -> Optional[Path]:
         """Download PDF from ArXiv URL with robust conversion."""
         try:
             # Clean URL
             paper_url = paper_url.strip()
-            
+
             # Convert abstract URL to PDF URL
             # Handles:
             # - http://arxiv.org/abs/2103.12345
             # - https://arxiv.org/pdf/2103.12345.pdf
             # - arxiv:2103.12345
-            
+
             if "arxiv.org/abs/" in paper_url:
                 pdf_url = paper_url.replace("/abs/", "/pdf/")
                 if not pdf_url.endswith(".pdf"):
@@ -213,29 +211,29 @@ class PDFDownloader:
                     pdf_url = pdf_url.replace("/abs/", "/pdf/")
                 if not pdf_url.endswith(".pdf") and "arxiv.org" in pdf_url:
                     pdf_url += ".pdf"
-            
+
             cache_path = self._get_cache_path(pdf_url)
-            
+
             # Return cached if exists
             if cache_path.exists():
                 return cache_path
-            
+
             # Download
             def download():
                 urllib.request.urlretrieve(pdf_url, cache_path)
-            
+
             await asyncio.to_thread(download)
             return cache_path
-            
+
         except Exception as e:
             logger.warning("Failed to download ArXiv PDF: %s", e)
             return None
-    
+
     async def _get_pmcid_from_pmid(self, pmid: str) -> Optional[str]:
         """Convert PMID to PMCID using Entrez API"""
         if not Entrez:
             return None
-            
+
         try:
             def call_entrez():
                 handle = Entrez.elink(dbfrom="pubmed", db="pmc", linkname="pubmed_pmc", id=pmid)
@@ -246,7 +244,7 @@ class PDFDownloader:
                     if links:
                         return links[0]["Id"]
                 return None
-            
+
             pmcid = await asyncio.to_thread(call_entrez)
             return pmcid
         except Exception as e:
@@ -261,19 +259,19 @@ class PDFDownloader:
         if not pmid_match:
             logger.info("Could not extract PMID from %s", paper_url)
             return None
-            
+
         pmid = pmid_match.group(1)
-        
+
         # Get PMCID
         pmcid = await self._get_pmcid_from_pmid(pmid)
         if not pmcid:
             logger.info("No PMCID found for PMID %s (paper may not be Open Access)", pmid)
             return None
-            
+
         # Construct PMC XML download using Entrez
         clean_pmcid = pmcid.replace("PMC", "")
         cache_path = self.cache_dir / f"pmc_{clean_pmcid}.txt"
-        
+
         try:
             if cache_path.exists():
                 return cache_path
@@ -319,12 +317,12 @@ class PDFDownloader:
         except Exception as e:
             logger.warning("Failed to download PMC text for PMID %s: %s", pmid, e)
             return None
-    
-    async def download_paper(self, paper: Dict) -> Optional[Path]:
+
+    async def download_paper(self, paper: dict) -> Optional[Path]:
         """Download paper PDF based on source"""
         url = paper.get("url", "")
         source = paper.get("source", "")
-        
+
         if source == "ArXiv":
             return await self.download_arxiv_pdf(url)
         elif source == "PubMed":
@@ -335,41 +333,41 @@ class PDFDownloader:
 
 class DocumentProcessor:
     """Extracts and processes text from PDFs"""
-    
+
     def __init__(self):
         if not pypdf:
             logger.warning("pypdf not installed — PDF processing disabled.")
-    
+
     async def extract_text(self, file_path: Path) -> Optional[str]:
         """Extract all text from PDF or TXT"""
         try:
             if file_path.suffix.lower() == '.txt':
                 def extract_txt():
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    with open(file_path, encoding='utf-8') as f:
                         return f.read()
                 text = await asyncio.to_thread(extract_txt)
                 return self._clean_text(text)
-                
+
             elif file_path.suffix.lower() == '.pdf':
                 if not pypdf:
                     return None
-                    
+
                 def extract_pdf():
                     reader = pypdf.PdfReader(str(file_path))
                     text_parts = []
                     for page in reader.pages:
                         text_parts.append(page.extract_text())
                     return "\n\n".join(text_parts)
-                
+
                 text = await asyncio.to_thread(extract_pdf)
                 return self._clean_text(text)
             else:
                 return None
-                
+
         except Exception as e:
             logger.warning("Failed to extract text from %s: %s", file_path.name, e)
             return None
-    
+
     def _clean_text(self, text: str) -> str:
         """Clean extracted text"""
         # Remove page numbers and headers (simple heuristic) - do this BEFORE collapsing whitespace
@@ -381,11 +379,11 @@ class DocumentProcessor:
 
 class SemanticChunker:
     """Intelligent text chunking with semantic awareness"""
-    
+
     def __init__(self, chunk_size: int = 800, overlap: int = 150):
         self.chunk_size = chunk_size
         self.overlap = overlap
-        
+
         # Try to use tiktoken for accurate token counting
         self.encoder = None
         if tiktoken:
@@ -393,7 +391,7 @@ class SemanticChunker:
                 self.encoder = tiktoken.get_encoding("cl100k_base")
             except Exception:
                 pass
-    
+
     def _count_tokens(self, text: str) -> int:
         """Count tokens in text"""
         if self.encoder:
@@ -401,25 +399,25 @@ class SemanticChunker:
         else:
             # Rough approximation: 1 token ≈ 4 chars
             return len(text) // 4
-    
-    def chunk_text(self, text: str, paper_id: str, paper_title: str) -> List[DocumentChunk]:
+
+    def chunk_text(self, text: str, paper_id: str, paper_title: str) -> list[DocumentChunk]:
         """Split text into semantic chunks"""
-        
+
         # Split by paragraphs first
         paragraphs = text.split('\n\n')
-        
+
         chunks = []
         current_chunk = []
         current_tokens = 0
         chunk_index = 0
-        
+
         for para in paragraphs:
             para = para.strip()
             if not para:
                 continue
-            
+
             para_tokens = self._count_tokens(para)
-            
+
             # If paragraph itself is too large, split it
             if para_tokens > self.chunk_size:
                 # Add current chunk if exists
@@ -434,7 +432,7 @@ class SemanticChunker:
                     chunk_index += 1
                     current_chunk = []
                     current_tokens = 0
-                
+
                 # Split large paragraph by sentences
                 sentences = re.split(r'(?<=[.!?])\s+', para)
                 for sent in sentences:
@@ -449,7 +447,7 @@ class SemanticChunker:
                                 chunk_index=chunk_index
                             ))
                             chunk_index += 1
-                        
+
                         # Start new chunk with overlap
                         if chunks and self.overlap > 0:
                             # Take last sentences for overlap
@@ -475,7 +473,7 @@ class SemanticChunker:
                             chunk_index=chunk_index
                         ))
                         chunk_index += 1
-                    
+
                     # Start new chunk with overlap
                     if chunks and self.overlap > 0:
                         overlap_text = current_chunk[-1] if current_chunk else ""
@@ -487,7 +485,7 @@ class SemanticChunker:
                 else:
                     current_chunk.append(para)
                     current_tokens += para_tokens
-        
+
         # Add final chunk
         if current_chunk:
             chunk_text = "\n\n".join(current_chunk)
@@ -497,13 +495,13 @@ class SemanticChunker:
                 paper_title=paper_title,
                 chunk_index=chunk_index
             ))
-        
+
         return chunks
 
 
 class RAGEngine:
     """Main RAG engine orchestrating all components"""
-    
+
     def __init__(
         self,
         collection_name: str = "papers",
@@ -526,7 +524,7 @@ class RAGEngine:
         self._bm25 = None
         self._bm25_dirty = True
         self._reranker = None
-        
+
         # Initialize embedding model
         self.embedding_model = None
         if SentenceTransformer:
@@ -536,7 +534,7 @@ class RAGEngine:
                 logger.info("Embedding model loaded.")
             except Exception as e:
                 logger.warning("Failed to load embedding model: %s", e)
-        
+
         # Initialize vector store
         self.chroma_client = None
         self.collection = None
@@ -553,8 +551,8 @@ class RAGEngine:
                 logger.info("Vector database initialised: %d chunks indexed.", self.collection.count())
             except Exception as e:
                 logger.warning("Failed to initialise ChromaDB: %s", e)
-    
-    async def process_papers(self, papers: List[Dict]) -> int:
+
+    async def process_papers(self, papers: list[dict]) -> int:
         """Download, process, and index papers"""
         if not self.embedding_model or not self.collection:
             logger.warning("RAG system not fully initialised — skipping paper processing.")
@@ -601,7 +599,7 @@ class RAGEngine:
                 # Enrich with extracted tables and figure captions
                 title = paper.get("title", "")
                 if file_path.suffix.lower() == ".pdf":
-                    for t_idx, tbl in enumerate(extract_tables_from_pdf(file_path)):
+                    for _t_idx, tbl in enumerate(extract_tables_from_pdf(file_path)):
                         chunks.append(DocumentChunk(
                             text=tbl["text"],
                             paper_id=paper_id,
@@ -631,12 +629,12 @@ class RAGEngine:
 
         logger.info("Indexed %d total chunks from %d papers.", total_chunks, len(papers))
         return total_chunks
-    
-    async def _index_chunks(self, chunks: List[DocumentChunk]):
+
+    async def _index_chunks(self, chunks: list[DocumentChunk]):
         """Generate embeddings and add chunks to vector store"""
         if not chunks:
             return
-        
+
         # Prepare data
         texts = [chunk.text for chunk in chunks]
         ids = [f"{chunk.paper_id}_chunk_{chunk.chunk_index}" for chunk in chunks]
@@ -650,13 +648,13 @@ class RAGEngine:
             }
             for chunk in chunks
         ]
-        
+
         # Generate embeddings
         def generate_embeddings():
             return self.embedding_model.encode(texts, convert_to_tensor=False).tolist()
-        
+
         embeddings = await asyncio.to_thread(generate_embeddings)
-        
+
         # Add to collection
         self.collection.add(
             ids=ids,
@@ -718,7 +716,7 @@ class RAGEngine:
         query_text: str,
         top_k: int = 5,
         fusion_candidates: int = 50,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Hybrid retrieval: BM25 + dense + RRF fusion + optional rerank.
 
         Falls back transparently to pure dense (``query``) when the BM25
@@ -747,8 +745,8 @@ class RAGEngine:
             return []
 
         # Build (doc_id, text) pairs in dense rank order.
-        dense_pairs: List[Tuple[str, str]] = []
-        meta_by_id: Dict[str, Dict] = {}
+        dense_pairs: list[tuple[str, str]] = []
+        meta_by_id: dict[str, dict] = {}
         if dense_raw.get("documents"):
             ids = dense_raw.get("ids", [[]])[0]
             docs = dense_raw["documents"][0]
@@ -771,7 +769,7 @@ class RAGEngine:
         )
 
         # Format results in the same shape as ``query``.
-        out: List[Dict] = []
+        out: list[dict] = []
         for cid, score, text in fused:
             meta = meta_by_id.get(cid, {})
             out.append({
@@ -782,25 +780,25 @@ class RAGEngine:
             })
         return out
 
-    async def query(self, query_text: str, top_k: int = 5) -> List[Dict]:
+    async def query(self, query_text: str, top_k: int = 5) -> list[dict]:
         """Semantic search over indexed papers"""
         if not self.embedding_model or not self.collection:
             logger.warning("RAG system not available.")
             return []
-        
+
         try:
             # Generate query embedding
             def encode_query():
                 return self.embedding_model.encode([query_text], convert_to_tensor=False).tolist()
-            
+
             query_embedding = await asyncio.to_thread(encode_query)
-            
+
             # Search
             results = self.collection.query(
                 query_embeddings=query_embedding,
                 n_results=top_k
             )
-            
+
             # Format results
             formatted_results = []
             if results['documents']:
@@ -811,13 +809,13 @@ class RAGEngine:
                         "paper_id": results['metadatas'][0][i]['paper_id'],
                         "distance": results['distances'][0][i] if 'distances' in results else None
                     })
-            
+
             return formatted_results
-            
+
         except Exception as e:
             logger.warning("RAG query failed: %s", e)
             return []
-    
+
     def is_paper_indexed(self, paper_url: str) -> bool:
         """Return True if the paper identified by *paper_url* is already in the vector store."""
         if not self.collection:
@@ -826,11 +824,11 @@ class RAGEngine:
         existing = self.collection.get(where={"paper_id": paper_id}, limit=1)
         return bool(existing and existing["ids"])
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Get RAG system statistics"""
         if not self.collection:
             return {"status": "unavailable"}
-        
+
         return {
             "status": "ready",
             "total_chunks": self.collection.count(),

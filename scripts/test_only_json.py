@@ -1,6 +1,5 @@
-import asyncio
-from co_scientist import _parse_json_response
 from test_suite import TestUtilities
+
 
 def main():
     print("Testing TestUtilities.test_json_parsing()...")

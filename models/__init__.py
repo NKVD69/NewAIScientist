@@ -3,27 +3,27 @@ Data models for the NewAIScientist system.
 Re-exports all core dataclasses for convenience.
 """
 from .hypothesis import (
+    AnalysisPlan,
     Claim,
+    DatasetInfo,
     Evidence,
+    ExperimentalProtocol,
     Hypothesis,
-    HypothesisStatus,
     HypothesisLink,
+    HypothesisStatus,
+    Manuscript,
+    ManuscriptSection,
     Prediction,
-    ReviewCritique,
     ResearchGoal,
     ResearchQuestion,
+    ReviewCritique,
     ScoredQuestion,
     StateOfArt,
+    StatisticalResult,
     StudyPhase,
     UserFeedback,
-    VariableRole,
     Variable,
-    ExperimentalProtocol,
-    AnalysisPlan,
-    StatisticalResult,
-    DatasetInfo,
-    ManuscriptSection,
-    Manuscript,
+    VariableRole,
 )
 from .memory import ContextMemory, TournamentMatch
 

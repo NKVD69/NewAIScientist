@@ -4,14 +4,14 @@ Unit tests for utility functions (JSON parsing, LLM state, safety checker).
 Fully offline — no LLM or network required.
 """
 
-import pytest
 import asyncio
 import json
 from unittest.mock import MagicMock, patch
 
-from utils.safety import check_code_safety, DANGEROUS_MODULES
-from utils.llm import parse_json_response, ensure_str, get_llm_usage_stats
+import pytest
 
+from utils.llm import ensure_str, get_llm_usage_stats, parse_json_response
+from utils.safety import DANGEROUS_MODULES, check_code_safety
 
 # ---------------------------------------------------------------------------
 # parse_json_response

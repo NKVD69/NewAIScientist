@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Iterable, List, Sequence
+from collections.abc import Iterable, Sequence
 
 from models.hypothesis import Hypothesis, Prediction
 
@@ -82,7 +82,7 @@ def score_text_predictions(texts: Iterable[str]) -> float:
     items = [t for t in (texts or []) if t and t.strip()]
     if not items:
         return 0.0
-    scores: List[float] = []
+    scores: list[float] = []
     for t in items:
         s = 0.0
         if _NUM_RE.search(t):

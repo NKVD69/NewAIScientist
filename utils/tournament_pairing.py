@@ -24,11 +24,11 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from collections.abc import Iterable, Sequence
 
 # Public type alias: a hypothesis as seen by the pairer.
-Competitor = Tuple[str, float]   # (id, elo_rating)
-Pair = Tuple[str, str]
+Competitor = tuple[str, float]   # (id, elo_rating)
+Pair = tuple[str, str]
 
 
 # ---------------------------------------------------------------------------
@@ -37,8 +37,8 @@ Pair = Tuple[str, str]
 
 def swiss_pairing(
     competitors: Sequence[Competitor],
-    history: Optional[Iterable[Pair]] = None,
-) -> List[Pair]:
+    history: Iterable[Pair] | None = None,
+) -> list[Pair]:
     """One round of Swiss pairing.
 
     Sort competitors by descending Elo, then pair them top-down while
@@ -49,10 +49,10 @@ def swiss_pairing(
     if len(competitors) < 2:
         return []
 
-    seen: Set[frozenset] = {frozenset(p) for p in (history or [])}
+    seen: set[frozenset] = {frozenset(p) for p in (history or [])}
     sorted_by_elo = sorted(competitors, key=lambda c: c[1], reverse=True)
     remaining = [cid for cid, _ in sorted_by_elo]
-    pairs: List[Pair] = []
+    pairs: list[Pair] = []
 
     while len(remaining) >= 2:
         a = remaining.pop(0)
@@ -91,8 +91,8 @@ def _binary_entropy(p: float) -> float:
 def information_gain_pairing(
     competitors: Sequence[Competitor],
     num_matches: int,
-    history: Optional[Iterable[Pair]] = None,
-) -> List[Pair]:
+    history: Iterable[Pair] | None = None,
+) -> list[Pair]:
     """Greedily select the next ``num_matches`` pairings by information gain.
 
     For each candidate pair (a, b), the information score is
@@ -108,16 +108,16 @@ def information_gain_pairing(
     if len(competitors) < 2 or num_matches <= 0:
         return []
 
-    counts: Dict[frozenset, int] = defaultdict(int)
+    counts: dict[frozenset, int] = defaultdict(int)
     for p in (history or []):
         counts[frozenset(p)] += 1
 
     ids = [cid for cid, _ in competitors]
     elo = dict(competitors)
 
-    selected: List[Pair] = []
+    selected: list[Pair] = []
     for _ in range(num_matches):
-        best_pair: Optional[Pair] = None
+        best_pair: Pair | None = None
         best_score = -math.inf
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):

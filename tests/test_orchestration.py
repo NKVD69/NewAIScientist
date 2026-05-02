@@ -4,10 +4,13 @@ Integration-style tests for the CoScientist orchestrator.
 """
 
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+
 from co_scientist import CoScientist
-from models import ResearchGoal, Hypothesis
+from models import Hypothesis, ResearchGoal
+
 
 class TestCoScientistOrchestration:
     @pytest.fixture
@@ -41,14 +44,14 @@ class TestCoScientistOrchestration:
             contradictions=[],
             summary="summary"
         )
-        
+
         co_scientist.scoping_agent.analyze_state_of_art = AsyncMock(return_value=soa_mock)
         co_scientist.scoping_agent.generate_research_questions = AsyncMock(return_value=[])
         co_scientist.scoping_agent.build_conceptual_framework = AsyncMock(return_value={})
-        
+
         co_scientist.context_memory.literature_context = []
         co_scientist.context_memory.research_goal = ResearchGoal(title="T", description="D", domain="D")
-        
+
         result = await co_scientist.run_scoping_cycle()
         assert "soa" in result
         assert co_scientist.scoping_agent.analyze_state_of_art.called
@@ -59,14 +62,14 @@ class TestCoScientistOrchestration:
         # Mock supervisor to avoid full execution but check queueing
         co_scientist.supervisor.queue_task = MagicMock()
         co_scientist.supervisor.execute_task_queue = AsyncMock()
-        
+
         await co_scientist.run_full_cycle(num_iterations=1)
-        
+
         # Verify initial tasks queued
         calls = [call.args[1] for call in co_scientist.supervisor.queue_task.call_args_list]
         assert "run_literature_search" in calls
         assert "run_scoping_cycle" in calls
         assert "run_hypothesis_generation_cycle" in calls
         assert "run_writing_cycle" in calls
-        
+
         assert co_scientist.supervisor.execute_task_queue.called

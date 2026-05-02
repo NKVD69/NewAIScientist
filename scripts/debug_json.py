@@ -1,5 +1,6 @@
+
 from co_scientist import _parse_json_response
-import json
+
 
 def test():
     print("Testing _parse_json_response...")

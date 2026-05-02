@@ -32,6 +32,7 @@ class BaseAgent:
         """Initialize the shared LLM client from config."""
         try:
             import openai  # noqa: F401 — imported for side-effect check
+
             import config as cfg
             self.llm_client = cfg.get_openai_client()
             if self.llm_client is not None:

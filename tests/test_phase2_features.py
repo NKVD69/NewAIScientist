@@ -19,7 +19,6 @@ import pytest
 
 from models.hypothesis import Claim, Evidence, Hypothesis, Prediction
 
-
 # ===========================================================================
 # #2 Claim / Evidence / Prediction model
 # ===========================================================================

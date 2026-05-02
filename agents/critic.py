@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict
+
 from models import Hypothesis, ResearchGoal
 
 logger = logging.getLogger(__name__)
@@ -13,12 +13,12 @@ class DevilsAdvocateAgent:
         self.model_name = model_name
         self.criticisms_completed = 0
 
-    async def refute_hypothesis(self, hypothesis: Hypothesis, goal: ResearchGoal, context: List[Dict]) -> Dict:
+    async def refute_hypothesis(self, hypothesis: Hypothesis, goal: ResearchGoal, context: list[dict]) -> dict:
         """
         Attempts to refute the hypothesis by identifying gaps, biases, and counter-evidence.
         """
         logger.info("DevilsAdvocate is critiquing: %s", hypothesis.title)
-        
+
         # System prompt for adversarial critique
         # This would be an LLM call in a real implementation
         critique = {
@@ -37,11 +37,11 @@ class DevilsAdvocateAgent:
             ],
             "verdict": "VULNERABLE - Requires rigorous mechanistic validation."
         }
-        
+
         self.criticisms_completed += 1
         return critique
 
-    async def run_adversarial_debate(self, hypothesis: Hypothesis, goal: ResearchGoal) -> Dict:
+    async def run_adversarial_debate(self, hypothesis: Hypothesis, goal: ResearchGoal) -> dict:
         """
         Simulates a debate between supporters and critics of the hypothesis.
         """

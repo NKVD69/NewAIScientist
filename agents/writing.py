@@ -9,19 +9,16 @@ Responsible for:
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from models.hypothesis import (
     Hypothesis,
     Manuscript,
     ManuscriptSection,
-    StatisticalResult,
-    ExperimentalProtocol,
 )
-from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from utils.llm import get_llm_completion
+
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -33,11 +30,11 @@ class WritingAgent(BaseAgent):
     name = "Writing"
 
     async def draft_section(
-        self, 
-        section_type: str, 
-        goal: Any, 
-        hypothesis: Optional[Hypothesis] = None, 
-        context: Optional[Dict] = None
+        self,
+        section_type: str,
+        goal: Any,
+        hypothesis: Hypothesis | None = None,
+        context: dict | None = None
     ) -> ManuscriptSection:
         """Drafts a specific section of the paper."""
         if not self.llm_client:
@@ -49,7 +46,7 @@ Research Goal: {goal.title if hasattr(goal, 'title') else str(goal)}
 Hypothesis: {hypothesis.title if hypothesis else 'N/A'}
 Context/Data: {context if context else 'N/A'}
 
-Write a rigorous, professional scientific {section_type}. 
+Write a rigorous, professional scientific {section_type}.
 Use academic tone, citations like (Author et al., Year) if citations are provided in context.
 Return ONLY the text content of the section."""
 
@@ -71,10 +68,10 @@ Return ONLY the text content of the section."""
             return ManuscriptSection(section_type=section_type, content=f"Error: {e}")
 
     async def compile_manuscript(
-        self, 
-        goal: Any, 
-        sections: Dict[str, ManuscriptSection], 
-        references: List[Dict[str, str]]
+        self,
+        goal: Any,
+        sections: dict[str, ManuscriptSection],
+        references: list[dict[str, str]]
     ) -> Manuscript:
         """Assembles all sections into a Manuscript model."""
         manuscript = Manuscript(
@@ -118,19 +115,18 @@ Return ONLY the text content of the section."""
             year = ref.get("year", "N/A")
             latex += fr"\bibitem{{ref{i}}} {authors} ({year}). {title}." + "\n"
         latex += r"\end{thebibliography}" + "\n\n"
-        
+
         latex += r"\end{document}"
 
         with open(filename, "w", encoding="utf-8") as f:
             f.write(latex)
-        
+
         return filename
 
     def export_to_docx(self, manuscript: Manuscript, filename: str = "paper.docx") -> str:
         """Generates a DOCX file from the manuscript using python-docx."""
         try:
             import docx
-            from docx.shared import Pt
         except ImportError:
             logger.warning("python-docx not installed. Creating a simple text fallback.")
             with open(filename.replace(".docx", ".txt"), "w", encoding="utf-8") as f:

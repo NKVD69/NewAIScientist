@@ -14,7 +14,6 @@ from agents.evolution import EvolutionAgent
 from models.hypothesis import Hypothesis, UserFeedback
 from utils.interactive_feedback import collect_feedback_cli
 
-
 # ---------------------------------------------------------------------------
 # UserFeedback model
 # ---------------------------------------------------------------------------

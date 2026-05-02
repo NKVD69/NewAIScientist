@@ -11,20 +11,19 @@ Responsible for:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
-import numpy as np
+
 from models.hypothesis import (
+    AnalysisPlan,
+    DatasetInfo,
     Hypothesis,
     StatisticalResult,
-    DatasetInfo,
-    AnalysisPlan,
 )
-from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from utils.llm import get_llm_completion, parse_json_response
+
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -43,7 +42,7 @@ class AnalysisAgent(BaseAgent):
         """Loads a local CSV and extracts metadata."""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"CSV not found: {file_path}")
-        
+
         df = pd.read_csv(file_path)
         info = DatasetInfo(
             name=os.path.basename(file_path),
@@ -56,13 +55,13 @@ class AnalysisAgent(BaseAgent):
         )
         return info
 
-    async def fetch_public_database_info(self, query: str, db_type: str) -> List[DatasetInfo]:
+    async def fetch_public_database_info(self, query: str, db_type: str) -> list[DatasetInfo]:
         """
         Interacts with public databases (MOCK/STRUCTURE for GEO, ClinicalTrials, etc.)
         In a real scenario, this would use Bio.Entrez or specific APIs.
         """
         logger.info(f"Searching {db_type} for query: {query}")
-        
+
         if not self.llm_client:
             return [DatasetInfo(name="Mock Result", source=db_type, description="LLM required for search")]
 
@@ -81,7 +80,7 @@ Return ONLY JSON."""
             data = parse_json_response(response.choices[0].message.content)
             if isinstance(data, dict):
                 data = next(iter(data.values())) if isinstance(next(iter(data.values())), list) else [data]
-            
+
             results = []
             for item in data:
                 results.append(DatasetInfo(
@@ -104,7 +103,7 @@ Return ONLY JSON."""
         """Generates a summary of the dataset's distributions and anomalies."""
         summary = df.describe(include='all').to_string()
         nulls = df.isnull().sum().to_string()
-        
+
         if not self.llm_client:
             return f"Summary Stats:\n{summary}\nMissing Values:\n{nulls}"
 
@@ -127,7 +126,7 @@ Provide a concise exploratory report."""
         except Exception as e:
             return f"Error during exploration: {e}"
 
-    async def run_statistical_tests(self, df: pd.DataFrame, plan: AnalysisPlan) -> List[StatisticalResult]:
+    async def run_statistical_tests(self, df: pd.DataFrame, plan: AnalysisPlan) -> list[StatisticalResult]:
         """
         Executes statistical tests as defined in the analysis plan.
         Uses the LLM to write the code and attempts to execute it safely.
@@ -153,7 +152,7 @@ Return ONLY JSON."""
                 json_mode=True,
             )
             data = parse_json_response(response.choices[0].message.content)
-            
+
             if isinstance(data, dict):
                 for test_name, res in data.items():
                     results.append(StatisticalResult(
@@ -177,13 +176,13 @@ Return ONLY JSON."""
             logger.error(f"Statistical testing failed: {e}")
             return []
 
-    async def interpret_results(self, results: List[StatisticalResult], hypothesis: Hypothesis) -> str:
+    async def interpret_results(self, results: list[StatisticalResult], hypothesis: Hypothesis) -> str:
         """Synthesizes statistical results into a conclusion about the hypothesis."""
         if not self.llm_client:
             return "No LLM available for interpretation."
 
         results_str = "\n".join([f"- {r.test_name}: p={r.p_value:.4f}, Sig={r.significant}. {r.interpretation}" for r in results])
-        
+
         prompt = f"""Interpret the following statistical results in the context of the hypothesis.
 Hypothesis: {hypothesis.title}
 Mechanism: {hypothesis.mechanism}

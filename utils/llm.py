@@ -7,7 +7,7 @@ import json
 import logging
 import random
 import re
-from typing import Any, List, Optional
+from typing import Any
 
 import config as cfg
 
@@ -124,7 +124,7 @@ async def _call_with_retry(client, kwargs: dict,
 
 async def get_llm_completion(
     client,
-    messages: List[dict],
+    messages: list[dict],
     temperature: float = 0.7,
     json_mode: bool = True,
     max_retries: int = DEFAULT_MAX_RETRIES,

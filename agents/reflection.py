@@ -10,10 +10,10 @@ Responsible for:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
 
 from models.hypothesis import Hypothesis, ResearchGoal, ReviewCritique
-from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from utils.llm import get_llm_completion, parse_json_response
+
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -28,14 +28,14 @@ class ReflectionAgent(BaseAgent):
         super().__init__(use_local_llm=use_local_llm)
         self.reviews_completed = 0
 
-    async def review_hypothesis(self, 
+    async def review_hypothesis(self,
                                 hypothesis: Hypothesis,
                                 goal: ResearchGoal) -> ReviewCritique:
         """
         Comprehensive hypothesis review.
         Uses LLM if available, otherwise falls back to simulation.
         """
-        
+
         if self.llm_client:
             try:
                 review = await self._review_with_llm(hypothesis, goal)
@@ -53,7 +53,7 @@ class ReflectionAgent(BaseAgent):
     async def _review_with_llm(self, hypothesis: Hypothesis, goal: ResearchGoal) -> ReviewCritique:
         """Perform review using local LLM"""
         prompt = self._build_review_prompt(hypothesis, goal)
-        
+
         try:
             response = await get_llm_completion(
                 self.llm_client,
@@ -64,9 +64,9 @@ class ReflectionAgent(BaseAgent):
         except Exception as e:
             logger.warning("LLM review API call failed: %s", e)
             raise e
-        
+
         data = parse_json_response(response.choices[0].message.content)
-        
+
         return ReviewCritique(
             review_type="llm-full",
             correctness_score=float(data.get("correctness_score", 0.5)),
@@ -119,13 +119,13 @@ Evaluate this hypothesis on the following criteria and return a JSON object:
         novelty = await self._assess_novelty(hypothesis, goal)
         testability = await self._assess_testability(hypothesis, goal)
         quality = self._compute_quality_score(correctness, novelty, testability)
-        
+
         self._update_novelty_level(hypothesis, novelty)
-        
+
         feedback = self._generate_review_feedback(
             correctness, novelty, testability, quality, hypothesis
         )
-        
+
         review = ReviewCritique(
             review_type="simulated-full",
             correctness_score=correctness,
@@ -134,12 +134,12 @@ Evaluate this hypothesis on the following criteria and return a JSON object:
             quality_score=quality,
             feedback=feedback
         )
-        
+
         hypothesis.reviews.append(review)
         self.reviews_completed += 1
-        
+
         return review
-    
+
     async def _assess_correctness(self, hypothesis: Hypothesis, goal: ResearchGoal) -> float:
         score = 0.7
         if hypothesis.grounding_evidence:
@@ -147,7 +147,7 @@ Evaluate this hypothesis on the following criteria and return a JSON object:
         if hypothesis.limitations:
             score -= len(hypothesis.limitations) * 0.05
         return min(1.0, max(0.0, score))
-    
+
     async def _assess_novelty(self, hypothesis: Hypothesis, goal: ResearchGoal) -> float:
         score = 0.6
         if "simulated" in hypothesis.generation_method:
@@ -163,7 +163,7 @@ Evaluate this hypothesis on the following criteria and return a JSON object:
         if "similar to" in hypothesis.description.lower():
             score -= 0.2
         return min(1.0, max(0.0, score))
-    
+
     async def _assess_testability(self, hypothesis: Hypothesis, goal: ResearchGoal) -> float:
         score = 0.65
         if len(hypothesis.testable_predictions) >= 3:
@@ -175,7 +175,7 @@ Evaluate this hypothesis on the following criteria and return a JSON object:
         if "requires novel techniques" in str(hypothesis.limitations):
             score -= 0.15
         return min(1.0, max(0.0, score))
-    
+
     def _compute_quality_score(self, correctness: float, novelty: float, testability: float) -> float:
         quality = (correctness * 0.4 + novelty * 0.3 + testability * 0.3)
         return min(1.0, max(0.0, quality))
@@ -185,8 +185,8 @@ Evaluate this hypothesis on the following criteria and return a JSON object:
         novelty = await self._assess_novelty(hypothesis, goal)
         testability = await self._assess_testability(hypothesis, goal)
         return self._compute_quality_score(correctness, novelty, testability)
-    
-    def _generate_review_feedback(self, correctness: float, novelty: float, 
+
+    def _generate_review_feedback(self, correctness: float, novelty: float,
                                  testability: float, quality: float,
                                  hypothesis: Hypothesis) -> str:
         feedback_parts = []

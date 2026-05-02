@@ -10,18 +10,17 @@ Responsible for:
 
 from __future__ import annotations
 
-import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from models.hypothesis import (
+    ExperimentalProtocol,
     Hypothesis,
     ResearchGoal,
-    ExperimentalProtocol,
     Variable,
-    VariableRole,
 )
-from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from utils.llm import get_llm_completion, parse_json_response
+
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -48,7 +47,7 @@ Hypothesis: {hypothesis.title}
 Mechanism: {hypothesis.mechanism}
 Predictions: {", ".join(hypothesis.testable_predictions)}
 
-Design a rigorous experimental protocol to test this hypothesis. 
+Design a rigorous experimental protocol to test this hypothesis.
 Return a JSON object with EXACTLY these keys:
 {{
   "title": "Protocol Title",
@@ -77,7 +76,7 @@ Return ONLY the JSON."""
                 json_mode=True,
             )
             data = parse_json_response(response.choices[0].message.content)
-            
+
             variables = []
             for v in data.get("variables", []):
                 variables.append(Variable(
@@ -110,7 +109,7 @@ Return ONLY the JSON."""
             logger.error("Experimental design failed: %s", e)
             return self._fallback_protocol(hypothesis, goal)
 
-    async def power_analysis(self, protocol: ExperimentalProtocol) -> Dict[str, Any]:
+    async def power_analysis(self, protocol: ExperimentalProtocol) -> dict[str, Any]:
         """
         Estimates required sample size based on the design.
         """
@@ -157,7 +156,7 @@ Return ONLY JSON."""
             return "# Code generation requires LLM"
 
         prompt = f"""Write a Python script that implements the following experimental protocol.
-If it's a simulation, generate the synthetic data. 
+If it's a simulation, generate the synthetic data.
 If it's for analysis, write the code that would process a CSV named 'data.csv'.
 
 Protocol: {protocol.title}
@@ -185,7 +184,7 @@ Return ONLY the code block."""
                 code = code.split("```python")[1].split("```")[0].strip()
             elif "```" in code:
                 code = code.split("```")[1].split("```")[0].strip()
-            
+
             protocol.code = code
             return code
         except Exception as e:

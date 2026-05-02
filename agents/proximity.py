@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
 
 from models.hypothesis import Hypothesis
 from utils.llm import ensure_str
@@ -36,27 +35,27 @@ class ProximityAgent:
         except Exception as e:
             logger.warning("ProximityAgent: SentenceTransformer unavailable, using Jaccard fallback. (%s)", e)
 
-    async def compute_proximity(self, hypotheses: List[Hypothesis]) -> Dict[str, List[Tuple[str, float]]]:
+    async def compute_proximity(self, hypotheses: list[Hypothesis]) -> dict[str, list[tuple[str, float]]]:
         """
         Compute similarity between hypotheses.
         Returns dict mapping hypothesis IDs to list of (similar_id, similarity_score)
         """
         proximity_map = {}
-        
+
         for i, hyp_a in enumerate(hypotheses):
             similarities = []
-            
+
             for j, hyp_b in enumerate(hypotheses):
                 if i != j:
                     similarity = await self._compute_similarity(hyp_a, hyp_b)
                     similarities.append((hyp_b.id, similarity))
                     self.proximity_graph[hyp_a.id][hyp_b.id] = similarity
-            
+
             similarities.sort(key=lambda x: x[1], reverse=True)
             proximity_map[hyp_a.id] = similarities
-        
+
         return proximity_map
-    
+
     async def _compute_similarity(self, hyp_a: Hypothesis, hyp_b: Hypothesis) -> float:
         """
         Compute semantic similarity score between two hypotheses (0–1).

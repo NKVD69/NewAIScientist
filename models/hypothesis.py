@@ -14,8 +14,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
-
+from typing import Any, Optional
 
 # ============================================================================
 # ENUMS
@@ -89,7 +88,7 @@ class Claim:
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     statement: str = ""
-    evidence: List[Evidence] = field(default_factory=list)
+    evidence: list[Evidence] = field(default_factory=list)
     confidence: float = 0.5
 
     def __post_init__(self):
@@ -166,8 +165,8 @@ class Hypothesis:
     description: str = ""
     reasoning: str = ""       # Logic/papers that led to this hypothesis
     mechanism: str = ""
-    testable_predictions: List[str] = field(default_factory=list)
-    grounding_evidence: List[str] = field(default_factory=list)
+    testable_predictions: list[str] = field(default_factory=list)
+    grounding_evidence: list[str] = field(default_factory=list)
     experimental_results: str = ""
 
     # Quality metrics
@@ -177,25 +176,25 @@ class Hypothesis:
     # Lifecycle
     status: HypothesisStatus = HypothesisStatus.GENERATED
     creation_timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    reviews: List[ReviewCritique] = field(default_factory=list)
+    reviews: list[ReviewCritique] = field(default_factory=list)
 
     # Genealogy
-    parent_ids: List[str] = field(default_factory=list)
+    parent_ids: list[str] = field(default_factory=list)
     generation_method: str = "initial"  # initial, evolved, combined, inspired
 
     # Citations
-    cited_papers: List[str] = field(default_factory=list)
-    limitations: List[str] = field(default_factory=list)
+    cited_papers: list[str] = field(default_factory=list)
+    limitations: list[str] = field(default_factory=list)
 
     # v3.0 — Hypothesis chaining (Sprint 3)
-    linked_hypotheses: List[Tuple[str, str]] = field(default_factory=list)
+    linked_hypotheses: list[tuple[str, str]] = field(default_factory=list)
     # Each tuple: (target_hypothesis_id, link_type)
     # link_type: "supports", "contradicts", "depends_on"
 
     # Structured decomposition (improvement #2)
-    claims: List["Claim"] = field(default_factory=list)
+    claims: list["Claim"] = field(default_factory=list)
     # Falsifiable, pre-registered predictions (improvement #3)
-    falsifiable_predictions: List["Prediction"] = field(default_factory=list)
+    falsifiable_predictions: list["Prediction"] = field(default_factory=list)
     # Falsifiability score (0..1), filled by FalsifiabilityAgent
     falsifiability_score: float = 0.0
 
@@ -241,8 +240,8 @@ class ResearchGoal:
     title: str = ""
     description: str = ""
     domain: str = ""          # biomedicine, physics, chemistry, etc.
-    preferences: Dict[str, Any] = field(default_factory=dict)
-    constraints: List[str] = field(default_factory=list)
+    preferences: dict[str, Any] = field(default_factory=dict)
+    constraints: list[str] = field(default_factory=list)
     creation_timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
 
@@ -252,7 +251,7 @@ class ResearchQuestion:
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     question: str = ""
     type: str = "exploratory"  # descriptive, correlational, causal, exploratory
-    pico: Optional[Dict] = None  # Population, Intervention, Comparison, Outcome
+    pico: Optional[dict] = None  # Population, Intervention, Comparison, Outcome
     novelty_score: float = 0.0
     feasibility_score: float = 0.0
     impact_score: float = 0.0
@@ -269,9 +268,9 @@ class ScoredQuestion:
 @dataclass
 class StateOfArt:
     """Structured synthesis of current knowledge"""
-    known_facts: List[str] = field(default_factory=list)
-    gaps: List[str] = field(default_factory=list)
-    contradictions: List[str] = field(default_factory=list)
+    known_facts: list[str] = field(default_factory=list)
+    gaps: list[str] = field(default_factory=list)
+    contradictions: list[str] = field(default_factory=list)
     summary: str = ""
 
 
@@ -298,27 +297,27 @@ class ExperimentalProtocol:
     hypothesis_id: str = ""
     title: str = ""
     design_type: str = "simulation"  # RCT, quasi-experimental, observational, simulation
-    variables: List[Variable] = field(default_factory=list)
-    experimental_groups: List[str] = field(default_factory=list)
+    variables: list[Variable] = field(default_factory=list)
+    experimental_groups: list[str] = field(default_factory=list)
     control_group: str = ""
     randomization_method: str = ""
     blinding: str = "none"  # none, single, double
-    inclusion_criteria: List[str] = field(default_factory=list)
-    exclusion_criteria: List[str] = field(default_factory=list)
-    procedure_steps: List[str] = field(default_factory=list)
+    inclusion_criteria: list[str] = field(default_factory=list)
+    exclusion_criteria: list[str] = field(default_factory=list)
+    procedure_steps: list[str] = field(default_factory=list)
     sample_size: int = 0
-    statistical_tests: List[str] = field(default_factory=list)
+    statistical_tests: list[str] = field(default_factory=list)
     alpha_level: float = 0.05
     corrections: str = "none"  # bonferroni, holm, fdr, none
     code: str = ""  # Executable Python script
-    power_analysis: Dict = field(default_factory=dict)
+    power_analysis: dict = field(default_factory=dict)
 
 
 @dataclass
 class AnalysisPlan:
     """Pre-registered statistical analysis plan"""
     primary_analysis: str = ""
-    statistical_tests: List[str] = field(default_factory=list)
+    statistical_tests: list[str] = field(default_factory=list)
     alpha_level: float = 0.05
     corrections: str = "none"
 
@@ -347,8 +346,8 @@ class DatasetInfo:
     description: str = ""
     num_rows: int = 0
     num_columns: int = 0
-    column_names: List[str] = field(default_factory=list)
-    column_types: Dict[str, str] = field(default_factory=dict)
+    column_names: list[str] = field(default_factory=list)
+    column_types: dict[str, str] = field(default_factory=dict)
 
 
 # ============================================================================
@@ -367,5 +366,5 @@ class ManuscriptSection:
 class Manuscript:
     """Complete scientific manuscript"""
     title: str = ""
-    sections: Dict[str, ManuscriptSection] = field(default_factory=dict)
-    references: List[Dict[str, str]] = field(default_factory=list)
+    sections: dict[str, ManuscriptSection] = field(default_factory=dict)
+    references: list[dict[str, str]] = field(default_factory=list)

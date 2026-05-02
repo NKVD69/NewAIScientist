@@ -5,8 +5,9 @@ Fully offline — no network required.
 """
 
 import asyncio
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestNormalizeArxivUrl:
@@ -92,12 +93,12 @@ class TestRAGEngine:
             call_count += 1
             if call_count == 1:
                 return {"ids": []}   # Not yet indexed
-            return {"ids": [f"1234_0"]}  # Already indexed
+            return {"ids": ["1234_0"]}  # Already indexed
 
         engine.collection.get.side_effect = mock_get
 
         # First indexing — should add
-        chunks_1 = asyncio.run(engine.process_papers([paper]))
+        asyncio.run(engine.process_papers([paper]))
 
         # Reset side effect to always return "found"
         engine.collection.get.side_effect = None
@@ -160,41 +161,57 @@ class TestRAGEngine:
 
 
 class TestSanitizeText:
-    """Test the unicode sanitization in generate_paper.py."""
+    """Test the unicode sanitization in scripts/generate_paper.py."""
+
+    @staticmethod
+    def _import_sanitize():
+        """Import _sanitize_for_pdf from scripts/generate_paper.py.
+
+        scripts/ is not a Python package, so we load it via importlib.util
+        rather than relying on PYTHONPATH munging. Skips if fpdf2 is missing.
+        """
+        pytest.importorskip("fpdf")
+        import importlib.util
+        from pathlib import Path
+        path = Path(__file__).resolve().parent.parent / "scripts" / "generate_paper.py"
+        spec = importlib.util.spec_from_file_location("generate_paper_script", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod._sanitize_for_pdf
 
     def test_ascii_passthrough(self):
-        from generate_paper import _sanitize_for_pdf
+        sanitize = self._import_sanitize()
         text = "Hello, world. This is a test."
-        assert _sanitize_for_pdf(text) == text
+        assert sanitize(text) == text
 
     def test_scientific_symbols_replaced(self):
-        from generate_paper import _sanitize_for_pdf
+        sanitize = self._import_sanitize()
         text = "Rate is ±5% and α=0.05"
-        result = _sanitize_for_pdf(text)
+        result = sanitize(text)
         assert "+/-" in result
         assert "alpha" in result
         # No unicode chars should remain
         result.encode("latin-1")  # Should not raise
 
     def test_arrows_replaced(self):
-        from generate_paper import _sanitize_for_pdf
+        sanitize = self._import_sanitize()
         text = "A → B ← C"
-        result = _sanitize_for_pdf(text)
+        result = sanitize(text)
         assert "->" in result
         assert "<-" in result
 
     def test_empty_string(self):
-        from generate_paper import _sanitize_for_pdf
-        assert _sanitize_for_pdf("") == ""
+        sanitize = self._import_sanitize()
+        assert sanitize("") == ""
 
     def test_greek_letters(self):
-        from generate_paper import _sanitize_for_pdf
+        sanitize = self._import_sanitize()
         text = "β-catenin signaling activates γ-secretase"
-        result = _sanitize_for_pdf(text)
+        result = sanitize(text)
         # Should be latin-1 encodable
         result.encode("latin-1")
         assert "beta" in result.lower() or "b" in result.lower()
 
     def test_none_safe(self):
-        from generate_paper import _sanitize_for_pdf
-        assert _sanitize_for_pdf(None) == ""  # type: ignore[arg-type]
+        sanitize = self._import_sanitize()
+        assert sanitize(None) == ""  # type: ignore[arg-type]

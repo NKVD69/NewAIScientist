@@ -4,11 +4,12 @@ Unit tests for data model classes (Hypothesis, ResearchGoal, ContextMemory, Tour
 These tests are fully offline — no LLM or network required.
 """
 
-import pytest
 from dataclasses import asdict
-from models.hypothesis import Hypothesis, HypothesisStatus, ReviewCritique, ResearchGoal
-from models.memory import ContextMemory, TournamentMatch
 
+import pytest
+
+from models.hypothesis import Hypothesis, HypothesisStatus, ResearchGoal, ReviewCritique
+from models.memory import ContextMemory, TournamentMatch
 
 # ---------------------------------------------------------------------------
 # HypothesisStatus

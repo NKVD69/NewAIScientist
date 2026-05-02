@@ -1,6 +1,6 @@
 import logging
-from typing import List, Dict
-from models import ContextMemory, ResearchGoal
+
+from models import ContextMemory
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +10,7 @@ class SearchAgent:
         self.model_name = model_name
         self.papers_retrieved = 0
 
-    async def search(self, query: str, max_results: int = 5) -> List[Dict]:
+    async def search(self, query: str, max_results: int = 5) -> list[dict]:
         """Performs a search across scientific repositories."""
         logger.info("Searching for: %s", query)
         # Mock search logic
@@ -34,7 +34,7 @@ class MetaReviewAgent:
         self.model_name = model_name
         self.meta_reviews_generated = 0
 
-    async def run_meta_review(self, memory: ContextMemory) -> Dict:
+    async def run_meta_review(self, memory: ContextMemory) -> dict:
         """Synthesizes current state into a meta-review."""
         logger.info("Generating meta-review...")
         self.meta_reviews_generated += 1

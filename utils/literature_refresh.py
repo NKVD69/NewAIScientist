@@ -11,13 +11,13 @@ unit-tested.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 
-def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
+def _parse_iso(ts: str | None) -> datetime | None:
     """Tolerant ISO-8601 parser. Accepts trailing 'Z' and date-only strings."""
     if not ts:
         return None
@@ -34,16 +34,16 @@ def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
     return None
 
 
-def _paper_key(paper: Dict) -> str:
+def _paper_key(paper: dict) -> str:
     """Stable identity for a paper. Prefers URL, then title."""
     return paper.get("url") or paper.get("doi") or paper.get("title") or ""
 
 
 def filter_new_papers(
-    fetched: Iterable[Dict],
-    existing: Iterable[Dict],
-    last_seen: Optional[str] = None,
-) -> List[Dict]:
+    fetched: Iterable[dict],
+    existing: Iterable[dict],
+    last_seen: str | None = None,
+) -> list[dict]:
     """Return papers in ``fetched`` that are both unseen and newer than the watermark.
 
     A paper is considered "new" iff:
@@ -56,7 +56,7 @@ def filter_new_papers(
     """
     seen_keys = {_paper_key(p) for p in existing if _paper_key(p)}
     cutoff = _parse_iso(last_seen)
-    out: List[Dict] = []
+    out: list[dict] = []
     for paper in fetched or []:
         key = _paper_key(paper)
         if key and key in seen_keys:
@@ -70,16 +70,16 @@ def filter_new_papers(
 
 
 def update_watermark(
-    last_seen: Dict[str, str],
+    last_seen: dict[str, str],
     source: str,
-    papers: Iterable[Dict],
-) -> Dict[str, str]:
+    papers: Iterable[dict],
+) -> dict[str, str]:
     """Advance ``last_seen[source]`` to the latest ``published`` timestamp seen.
 
     Mutates and returns the same dict for chaining. If no parseable
     timestamp is found, ``last_seen`` is left untouched.
     """
-    latest: Optional[datetime] = _parse_iso(last_seen.get(source))
+    latest: datetime | None = _parse_iso(last_seen.get(source))
     for paper in papers or []:
         ts = _parse_iso(paper.get("published") or paper.get("date"))
         if ts is None:

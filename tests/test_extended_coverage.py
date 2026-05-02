@@ -1,19 +1,28 @@
-import pytest
 import asyncio
-import os
+import hashlib
 import json
-import pandas as pd
-from unittest.mock import MagicMock, patch, AsyncMock
+import os
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pandas as pd
+import pytest
 
 from agents.analysis import AnalysisAgent
 from agents.evolution import EvolutionAgent
 from agents.generation import GenerationAgent
 from agents.literature import LiteratureAgent
-from models.hypothesis import Hypothesis, ResearchGoal, AnalysisPlan, StatisticalResult, DatasetInfo, StateOfArt
-from rag_system import RAGEngine, PDFDownloader, SemanticChunker, DocumentProcessor
 from co_scientist import CoScientist
-import hashlib
+from models.hypothesis import (
+    AnalysisPlan,
+    DatasetInfo,
+    Hypothesis,
+    ResearchGoal,
+    StateOfArt,
+    StatisticalResult,
+)
+from rag_system import DocumentProcessor, PDFDownloader, RAGEngine, SemanticChunker
+
 
 @pytest.mark.asyncio
 class TestAnalysisAgentExtended:
@@ -26,7 +35,7 @@ class TestAnalysisAgentExtended:
         csv_file = tmp_path / "test.csv"
         df = pd.DataFrame({"A": [1, 2], "B": [3, 4]})
         df.to_csv(csv_file, index=False)
-        
+
         info = await agent.load_csv(str(csv_file))
         assert info.name == "test.csv"
         assert info.num_rows == 2
@@ -39,7 +48,7 @@ class TestAnalysisAgentExtended:
         mock_response.choices[0].message.content = json.dumps([
             {"name": "Dataset 1", "source": "GEO", "description": "Desc 1", "num_rows_est": 100}
         ])
-        
+
         agent.llm_client = MagicMock()
         with patch("agents.analysis.get_llm_completion", return_value=mock_response):
             results = await agent.fetch_public_database_info("cancer", "GEO")
@@ -52,7 +61,7 @@ class TestAnalysisAgentExtended:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "Exploratory report"
-        
+
         with patch("agents.analysis.get_llm_completion", return_value=mock_response):
             report = await agent.run_exploratory_analysis(df)
             assert report == "Exploratory report"
@@ -66,7 +75,7 @@ class TestAnalysisAgentExtended:
         mock_response.choices[0].message.content = json.dumps({
             "t-test": {"statistic": 2.5, "p_value": 0.04, "significant": True, "interpretation": "Sig"}
         })
-        
+
         with patch("agents.analysis.get_llm_completion", return_value=mock_response):
             results = await agent.run_statistical_tests(df, plan)
             assert len(results) == 1
@@ -80,7 +89,7 @@ class TestAnalysisAgentExtended:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "Conclusion: Supported"
-        
+
         with patch("agents.analysis.get_llm_completion", return_value=mock_response):
             conclusion = await agent.interpret_results(results, hyp)
             assert "Supported" in conclusion
@@ -94,16 +103,16 @@ class TestEvolutionAgentExtended:
 
     async def test_evolve_strategies(self, agent):
         hyp = Hypothesis(title="Original", description="Desc", mechanism="Mech")
-        
+
         # Test enhancement
         enhanced = await agent.evolve_hypothesis(hyp, strategy="enhancement")
         assert "Evolved: enhancement" in enhanced.title
         assert "grounded" in enhanced.mechanism.lower()
-        
+
         # Test simplification
         simplified = await agent.evolve_hypothesis(hyp, strategy="simplification")
         assert "Simplified" in simplified.title
-        
+
         # Test divergent
         divergent = await agent.evolve_hypothesis(hyp, strategy="out_of_box")
         assert "Divergent" in divergent.title
@@ -120,7 +129,7 @@ class TestEvolutionAgentExtended:
             "testable_predictions": ["P1"],
             "limitations": ["L1"]
         })
-        
+
         with patch("agents.evolution.get_llm_completion", return_value=mock_response):
             refined = await agent.evolve_hypothesis(hyp, strategy="enhancement")
             assert refined.title == "Refined Title"
@@ -137,15 +146,15 @@ class TestGenerationAgentExtended:
         goal = ResearchGoal(title="Goal", description="Desc", domain="Domain")
         papers = [{"title": "Paper 1", "url": "url1", "summary": "Sum 1"}]
         agent.llm_client = MagicMock()
-        
+
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps([{
-            "title": "Hyp 1", "description": "Desc 1", "reasoning": "Reas 1", 
-            "mechanism": "Mech 1", "testable_predictions": ["P1"], 
+            "title": "Hyp 1", "description": "Desc 1", "reasoning": "Reas 1",
+            "mechanism": "Mech 1", "testable_predictions": ["P1"],
             "cited_papers": ["url1"], "grounding_evidence": ["E1"], "limitations": ["L1"]
         }])
-        
+
         with patch("agents.generation.get_llm_completion", return_value=mock_response):
             # Also mock refinement
             with patch.object(agent, "_refine_hypothesis", side_effect=lambda x, y: x):
@@ -173,7 +182,7 @@ class TestLiteratureAgentExtended:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps({"queries": ["covid therapy", "sars-cov-2 drug"]})
-        
+
         with patch("agents.literature.get_llm_completion", return_value=mock_response):
             queries = await agent._generate_search_queries(goal)
             assert "covid therapy" in queries
@@ -184,7 +193,7 @@ class TestLiteratureAgentExtended:
             {"title": "Unique Paper", "url": "url1", "summary": "S1"},
             {"title": "UNIQUE PAPER", "url": "url2", "summary": "S2"}, # Duplicate
         ]
-        
+
         with patch.object(agent, "_generate_search_queries", return_value=["query"]), \
              patch.object(agent, "_search_arxiv", return_value=mock_papers), \
              patch.object(agent, "_search_pubmed", return_value=[]):
@@ -216,7 +225,7 @@ class TestRAGExtended:
         with patch("urllib.request.urlretrieve"), patch("pathlib.Path.exists", return_value=False):
             path = await downloader.download_arxiv_pdf(url)
             assert expected_hash in str(path)
-        
+
         if os.path.exists("./test_papers"):
             import shutil
             shutil.rmtree("./test_papers")
@@ -272,12 +281,12 @@ class TestCoScientistExtended:
     async def test_export_hypotheses_json(self, co_scientist, tmp_path):
         co_scientist.context_memory.research_goal = ResearchGoal(title="Test")
         co_scientist.context_memory.hypotheses = {"h1": Hypothesis(title="H1")}
-        
+
         export_file = tmp_path / "hypotheses.json"
         co_scientist.export_hypotheses_json(str(export_file))
-        
+
         assert export_file.exists()
-        with open(export_file, "r") as f:
+        with open(export_file) as f:
             data = json.load(f)
             assert data["research_goal"]["title"] == "Test"
             assert len(data["hypotheses"]) == 1

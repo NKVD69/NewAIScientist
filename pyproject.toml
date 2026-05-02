@@ -25,6 +25,8 @@ extend-exclude = [
     "data",
     "docs",
     "__pycache__",
+    ".claude",                 # Claude Code worktrees: duplicate copies of source
+    "tests/test_suite_legacy.py",  # legacy suite, also ignored by pytest
 ]
 
 [tool.ruff.lint]

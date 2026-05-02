@@ -18,46 +18,41 @@ import logging
 import os
 import random
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
-import config
-from models import (
-    HypothesisStatus,
-    StudyPhase,
-    ReviewCritique,
-    Hypothesis,
-    ResearchGoal,
-    ResearchQuestion,
-    TournamentMatch,
-    ContextMemory,
-    AnalysisPlan,
-    UserFeedback,
-)
 from agents import (
-    LiteratureAgent,
-    GenerationAgent,
-    ReflectionAgent,
-    RankingAgent,
-    ProximityAgent,
-    EvolutionAgent,
-    MetaReviewAgent,
-    GraphAgent,
-    ExperimentAgent,
-    SupervisorAgent,
-    ScopingAgent,
-    ProtocolAgent,
     AnalysisAgent,
+    EvolutionAgent,
+    ExperimentAgent,
+    GenerationAgent,
+    GraphAgent,
+    LiteratureAgent,
+    MetaReviewAgent,
+    ProtocolAgent,
+    ProximityAgent,
+    RankingAgent,
+    ReflectionAgent,
+    ScopingAgent,
+    SupervisorAgent,
     WritingAgent,
+)
+from models import (
+    AnalysisPlan,
+    ContextMemory,
+    Hypothesis,
+    HypothesisStatus,
+    ResearchGoal,
+    ReviewCritique,
+    StudyPhase,
+    TournamentMatch,
+    UserFeedback,
 )
 
 logger = logging.getLogger(__name__)
 
 # -- Backward-compatible re-exports (DEPRECATED — use utils.llm directly) ----
-from utils.llm import (                     # noqa: F401, E402
+from utils.llm import (  # noqa: F401, E402
     get_llm_completion as _get_llm_completion,
-    parse_json_response as _parse_json_response,
-    ensure_str as _ensure_str,
-    get_llm_usage_stats,
 )
 from utils.safety import check_code_safety as _check_code_safety  # noqa: F401, E402
 
@@ -114,8 +109,8 @@ class CoScientist:
                                        title: str,
                                        description: str,
                                        domain: str,
-                                       preferences: Dict = None,
-                                       constraints: List[str] = None) -> ResearchGoal:
+                                       preferences: dict = None,
+                                       constraints: list[str] = None) -> ResearchGoal:
         """Initialize research goal from scientist input."""
         goal = ResearchGoal(
             title=title,
@@ -125,13 +120,13 @@ class CoScientist:
             constraints=constraints or [],
         )
         self.context_memory.research_goal = goal
-        print(f"\n📋 Research Goal Initialized:")
+        print("\n📋 Research Goal Initialized:")
         print(f"   Title: {goal.title}")
         print(f"   Domain: {goal.domain}")
         print(f"   Description: {goal.description[:100]}...")
         return goal
 
-    async def analyze_research_description(self, description: str) -> Dict[str, Any]:
+    async def analyze_research_description(self, description: str) -> dict[str, Any]:
         """Analyze research description to suggest domain and databases."""
         from utils.llm import get_llm_completion, parse_json_response
         if not self.generation_agent.llm_client:
@@ -162,8 +157,8 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     # ------------------------------------------------------------------
 
     async def run_literature_search(self, max_results: int = 5,
-                                    sources: List[str] = None,
-                                    iterations: int = 2) -> List[Dict]:
+                                    sources: list[str] = None,
+                                    iterations: int = 2) -> list[dict]:
         """Run literature search to populate context."""
         if sources is None:
             sources = ["arxiv"]
@@ -185,7 +180,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
 
         # RAG indexing
         if self.literature_agent.rag_engine and papers:
-            print(f"\n🧠 Processing papers with RAG system...")
+            print("\n🧠 Processing papers with RAG system...")
             chunks = await self.literature_agent.process_papers_with_rag(papers)
             if chunks > 0:
                 print(f"✓ RAG system ready with {chunks} indexed chunks")
@@ -196,10 +191,10 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     # PHASE 1: SCOPING
     # ------------------------------------------------------------------
 
-    async def run_scoping_cycle(self) -> Dict:
+    async def run_scoping_cycle(self) -> dict:
         """Run the research scoping phase."""
         self.context_memory.current_phase = StudyPhase.SCOPING.value
-        print(f"\n🔍 [Scoping Phase] Analyzing research goal and literature...")
+        print("\n🔍 [Scoping Phase] Analyzing research goal and literature...")
 
         soa = await self.scoping_agent.analyze_state_of_art(
             self.context_memory.literature_context, self.context_memory.research_goal,
@@ -223,7 +218,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     # PHASE 3: HYPOTHESIS GENERATION, REVIEW, TOURNAMENT, EVOLUTION
     # ------------------------------------------------------------------
 
-    async def run_hypothesis_generation_cycle(self, num_hypotheses: int = 5) -> List[Hypothesis]:
+    async def run_hypothesis_generation_cycle(self, num_hypotheses: int = 5) -> list[Hypothesis]:
         """Generate initial hypotheses."""
         self.context_memory.current_phase = StudyPhase.HYPOTHESIS_GENERATION.value
         print(f"\n🔬 Generating {num_hypotheses} initial hypotheses...")
@@ -245,9 +240,9 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         print(f"✓ Generated {len(hypotheses)} hypotheses")
         return hypotheses
 
-    async def run_review_cycle(self) -> List[ReviewCritique]:
+    async def run_review_cycle(self) -> list[ReviewCritique]:
         """Review all unreviewed hypotheses."""
-        print(f"\n📝 Conducting hypothesis reviews...")
+        print("\n📝 Conducting hypothesis reviews...")
         unreviewed = [h for h in self.context_memory.hypotheses.values() if len(h.reviews) == 0]
         reviews = []
         for hyp in unreviewed:
@@ -261,7 +256,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         self,
         num_matches: int = 5,
         pairing: str = "information_gain",
-    ) -> List[TournamentMatch]:
+    ) -> list[TournamentMatch]:
         """Conduct tournament matches.
 
         ``pairing`` is one of:
@@ -327,9 +322,9 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         print(f"✓ Completed {len(matches)} tournament matches")
         return matches
 
-    async def run_evolution_cycle(self) -> List[Hypothesis]:
+    async def run_evolution_cycle(self) -> list[Hypothesis]:
         """Evolve top hypotheses using diverse strategies."""
-        print(f"\n🧬 Evolving hypotheses...")
+        print("\n🧬 Evolving hypotheses...")
         top_hyps = sorted(
             self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True,
         )[:3]
@@ -344,9 +339,9 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         print(f"✓ Evolved {len(evolved)} hypotheses")
         return evolved
 
-    async def run_experiment_cycle(self) -> List[str]:
+    async def run_experiment_cycle(self) -> list[str]:
         """Run experiments on top hypotheses."""
-        print(f"\n🧪 Running experiments...")
+        print("\n🧪 Running experiments...")
         top_hyps = sorted(
             self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True,
         )[:2]
@@ -363,8 +358,8 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     async def run_interactive_feedback_cycle(
         self,
         top_n: int = 3,
-        feedbacks: Optional[List[UserFeedback]] = None,
-    ) -> List[Hypothesis]:
+        feedbacks: Optional[list[UserFeedback]] = None,
+    ) -> list[Hypothesis]:
         """Inject scientist feedback into hypothesis evolution.
 
         If ``feedbacks`` is provided, those entries drive the cycle (for
@@ -386,7 +381,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
             from utils.interactive_feedback import collect_feedback_cli
             feedbacks = collect_feedback_cli(top)
 
-        evolved: List[Hypothesis] = []
+        evolved: list[Hypothesis] = []
         by_id = {h.id: h for h in top}
         for fb in feedbacks:
             hyp = by_id.get(fb.hypothesis_id)
@@ -407,9 +402,9 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         )
         return evolved
 
-    async def run_meta_review_cycle(self) -> Dict[str, Any]:
+    async def run_meta_review_cycle(self) -> dict[str, Any]:
         """Meta-review: synthesize insights across all hypotheses."""
-        print(f"\n🔄 Generating meta-review...")
+        print("\n🔄 Generating meta-review...")
         meta_review = await self.meta_review_agent.generate_meta_review(
             list(self.context_memory.hypotheses.values()),
             self.context_memory.tournament_history,
@@ -479,7 +474,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     async def run_writing_cycle(self) -> Any:
         """Generate the final research paper."""
         self.context_memory.current_phase = StudyPhase.WRITING.value
-        print(f"\n📝 [Writing Phase] Drafting scientific manuscript...")
+        print("\n📝 [Writing Phase] Drafting scientific manuscript...")
         goal = self.context_memory.research_goal
 
         top_hyps = sorted(self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True)
@@ -501,13 +496,13 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
 
         self.writing_agent.export_to_latex(manuscript, f"research_paper_{goal.id}.tex")
         self.writing_agent.export_to_docx(manuscript, f"research_paper_{goal.id}.docx")
-        print(f"✓ Manuscript compiled and exported.")
+        print("✓ Manuscript compiled and exported.")
         return manuscript
 
     # ------------------------------------------------------------------
     async def run_proximity_cycle(self):
         """Wrapper for computing proximity to be called via task queue."""
-        print(f"\n🔗 Computing hypothesis proximity...")
+        print("\n🔗 Computing hypothesis proximity...")
         await self.proximity_agent.compute_proximity(
             list(self.context_memory.hypotheses.values()),
         )
@@ -554,19 +549,19 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     # STATUS & EXPORT
     # ------------------------------------------------------------------
 
-    def _print_iteration_status(self, iteration: int, meta_review: Dict):
+    def _print_iteration_status(self, iteration: int, meta_review: dict):
         print(f"\n📊 Iteration {iteration} Summary:")
         print(f"  Total hypotheses: {meta_review['total_hypotheses']}")
-        print(f"\n  Top hypotheses:")
+        print("\n  Top hypotheses:")
         for h_info in meta_review["top_hypotheses"][:3]:
             print(f"    • {h_info['title'][:50]}...")
             print(f"      Elo: {h_info['elo_rating']:.0f} | Novelty: {h_info['novelty']}")
         if meta_review["suggested_improvements"]:
-            print(f"\n  Suggested improvements:")
+            print("\n  Suggested improvements:")
             for s in meta_review["suggested_improvements"][:2]:
                 print(f"    • {s}")
         if meta_review["next_iterations_focus"]:
-            print(f"\n  Next focus areas:")
+            print("\n  Next focus areas:")
             for f in meta_review["next_iterations_focus"][:2]:
                 print(f"    • {f}")
 
@@ -575,7 +570,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         print("FINAL SUMMARY")
         print("=" * 70)
 
-        print(f"\n📈 System Statistics:")
+        print("\n📈 System Statistics:")
         print(f"  Total hypotheses generated: {len(self.context_memory.hypotheses)}")
         print(f"  Tournament matches: {len(self.context_memory.tournament_history)}")
         print(f"  Generation agent: {self.generation_agent.generated_count} hypotheses")
@@ -588,7 +583,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
             self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True,
         )[:5]
 
-        print(f"\n🏆 Top 5 Hypotheses (by Elo rating):")
+        print("\n🏆 Top 5 Hypotheses (by Elo rating):")
         for i, hyp in enumerate(top_hyps, 1):
             print(f"\n{i}. {hyp.title}")
             print(f"   ID: {hyp.id}")

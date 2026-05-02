@@ -3,26 +3,26 @@ agents/ package — Specialized AI agents for scientific research.
 v3.0 Fully modular agents (extracted from co_scientist.py monolith).
 """
 
+from .analysis import AnalysisAgent
 from .base import BaseAgent
-from .literature import LiteratureAgent
-from .generation import GenerationAgent
-from .reflection import ReflectionAgent
-from .ranking import RankingAgent
-from .proximity import ProximityAgent
+from .chaining import HypothesisChainingAgent
+from .critic import DevilsAdvocateAgent
 from .evolution import EvolutionAgent
-from .meta_review import MetaReviewAgent
-from .graph_agent import GraphAgent
 from .experiment import ExperimentAgent
-from .supervisor import SupervisorAgent, Task
+from .generation import GenerationAgent
+from .graph_agent import GraphAgent
+from .literature import LiteratureAgent
+from .meta_review import MetaReviewAgent
+from .protocol import ProtocolAgent
+from .proximity import ProximityAgent
+from .ranking import RankingAgent
+from .reflection import ReflectionAgent
 
 # v3.0 New Agents
 from .scoping import ScopingAgent
-from .protocol import ProtocolAgent
-from .analysis import AnalysisAgent
-from .writing import WritingAgent
-from .critic import DevilsAdvocateAgent
-from .chaining import HypothesisChainingAgent
+from .supervisor import SupervisorAgent, Task
 from .utils_agents import SearchAgent
+from .writing import WritingAgent
 
 __all__ = [
     "BaseAgent",

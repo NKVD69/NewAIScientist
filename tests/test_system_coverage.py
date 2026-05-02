@@ -4,11 +4,13 @@ Additional tests to improve coverage for utils/llm.py and rag_system.py.
 """
 
 import asyncio
-import pytest
 import json
-from unittest.mock import MagicMock, patch, AsyncMock
-from utils.llm import get_llm_completion, parse_json_response, ensure_str, get_llm_usage_stats
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from rag_system import RAGEngine
+from utils.llm import ensure_str, get_llm_completion, get_llm_usage_stats, parse_json_response
 
 # ---------------------------------------------------------------------------
 # utils/llm.py Tests
@@ -40,13 +42,13 @@ class TestLLMUtils:
         client = MagicMock()
         mock_resp = MagicMock()
         mock_resp.usage.total_tokens = 5
-        
+
         # Fail with JSON mode error, then succeed without it
         client.chat.completions.create.side_effect = [
             Exception("400: response_format of type 'json_object' is not supported"),
             mock_resp
         ]
-        
+
         with patch("utils.llm.cfg.get_llm_model_name", return_value="legacy-model"):
             resp = await get_llm_completion(client, [{"role": "user", "content": "hi"}], json_mode=True)
             assert resp == mock_resp
@@ -102,7 +104,7 @@ class TestRAGEngine:
         mock_rag.downloader.download_paper = AsyncMock(return_value=Path("/tmp/p1.txt"))
         mock_rag.processor.extract_text = AsyncMock(return_value="Extracted text content from paper.")
         mock_rag.embedding_model.encode.return_value = MagicMock(tolist=lambda: [[0.1]*384])
-        
+
         count = await mock_rag.process_papers(papers)
         assert count > 0
         assert mock_rag.collection.add.called
@@ -115,7 +117,7 @@ class TestRAGEngine:
             "distances": [[0.1, 0.2]]
         }
         mock_rag.embedding_model.encode.return_value = MagicMock(tolist=lambda: [[0.1]*384])
-        
+
         results = await mock_rag.query("test query", top_k=2)
         assert len(results) == 2
         assert results[0]["paper_title"] == "P1"

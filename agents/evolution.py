@@ -9,10 +9,10 @@ Responsible for:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
 
 from models.hypothesis import Hypothesis, UserFeedback
 from utils.llm import ensure_str, get_llm_completion, parse_json_response
+
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -26,8 +26,8 @@ class EvolutionAgent(BaseAgent):
     def __init__(self, use_local_llm: bool = True):
         super().__init__(use_local_llm=use_local_llm)
         self.evolved_hypotheses = 0
-    
-    async def evolve_hypothesis(self, 
+
+    async def evolve_hypothesis(self,
                                hypothesis: Hypothesis,
                                strategy: str = "enhancement") -> Hypothesis:
         """
@@ -44,22 +44,22 @@ class EvolutionAgent(BaseAgent):
             parent_ids=[hypothesis.id],
             generation_method="evolved"
         )
-        
+
         if strategy == "enhancement":
             new_hyp = await self._enhance_with_grounding(new_hyp, hypothesis)
         elif strategy == "simplification":
             new_hyp = await self._simplify(new_hyp, hypothesis)
         elif strategy == "out_of_box":
             new_hyp = await self._divergent_thinking(new_hyp, hypothesis)
-        
+
         # Try LLM-based refinement if available
         if self.llm_client:
             new_hyp = await self._llm_refine_evolution(new_hyp, hypothesis, strategy)
-        
+
         self.evolved_hypotheses += 1
         return new_hyp
-    
-    async def _enhance_with_grounding(self, new_hyp: Hypothesis, 
+
+    async def _enhance_with_grounding(self, new_hyp: Hypothesis,
                                      original: Hypothesis) -> Hypothesis:
         new_hyp.mechanism = (
             f"Enhanced mechanism: {original.mechanism} "
@@ -74,8 +74,8 @@ class EvolutionAgent(BaseAgent):
             "Advanced prediction: Multi-dimensional experimental validation",
         ]
         return new_hyp
-    
-    async def _simplify(self, new_hyp: Hypothesis, 
+
+    async def _simplify(self, new_hyp: Hypothesis,
                        original: Hypothesis) -> Hypothesis:
         new_hyp.title = f"Simplified: {original.title}"
         new_hyp.mechanism = (
@@ -88,7 +88,7 @@ class EvolutionAgent(BaseAgent):
             "Simplified version may miss secondary effects"
         ]
         return new_hyp
-    
+
     async def _divergent_thinking(self, new_hyp: Hypothesis,
                                  original: Hypothesis) -> Hypothesis:
         new_hyp.title = f"Divergent: {original.title}"
@@ -113,9 +113,9 @@ class EvolutionAgent(BaseAgent):
         else:
             system_prompt = "You are a meticulous scientific research assistant."
             task_instruction = f"Improve the following hypothesis using the '{strategy}' strategy. Ground it in realistic pathways."
-            
+
         prompt = f"""{system_prompt}
-        
+
 {task_instruction}
 
 Original Hypothesis:
@@ -137,7 +137,7 @@ Provide an improved version as a JSON object with keys: "title", "description", 
                 temperature=0.5,
                 json_mode=True
             )
-            
+
             data = parse_json_response(response.choices[0].message.content)
             new_hyp.title = ensure_str(data.get("title", new_hyp.title))
             new_hyp.description = ensure_str(data.get("description", new_hyp.description))
@@ -147,7 +147,7 @@ Provide an improved version as a JSON object with keys: "title", "description", 
             new_hyp.generation_method = "evolved-llm"
         except Exception as e:
             logger.warning("LLM evolution refinement failed: %s", e)
-        
+
         return new_hyp
 
 
@@ -155,7 +155,7 @@ Provide an improved version as a JSON object with keys: "title", "description", 
         self,
         hypothesis: Hypothesis,
         feedback: UserFeedback,
-    ) -> Optional[Hypothesis]:
+    ) -> Hypothesis | None:
         """Refine a hypothesis using a scientist's structured feedback.
 
         Behaviour by ``feedback.verdict``:

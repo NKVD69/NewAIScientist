@@ -1,16 +1,17 @@
-import streamlit as st
 import asyncio
 import concurrent.futures
-import threading
-import pandas as pd
+import hashlib
 import json
+import logging
 import os
 import sys
-import hashlib
-import logging
-from datetime import datetime
-import plotly.express as px
+import threading
 from dataclasses import asdict
+from datetime import datetime
+
+import pandas as pd
+import plotly.express as px
+import streamlit as st
 from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 
 # Defensive definitions for potential JS-style JSON/boolean errors
@@ -21,7 +22,7 @@ null = None
 # Configure logging
 logger = logging.getLogger(__name__)
 
-from co_scientist import CoScientist, ResearchGoal, Hypothesis, get_llm_usage_stats
+from co_scientist import CoScientist, get_llm_usage_stats  # noqa: E402  (after logging setup)
 
 # ---------------------------------------------------------------------------
 # ASYNC HELPER — run coroutines safely in a dedicated thread with its own loop
@@ -55,11 +56,11 @@ class StreamlitRedirector:
     def write(self, msg):
         if self.ctx and not get_script_run_ctx():
             add_script_run_ctx(threading.current_thread(), self.ctx)
-            
+
         self.buffer += msg
         if len(self.buffer) > 10000:
             self.buffer = self.buffer[-10000:]
-        
+
         # Debounce UI updates to max 10 FPS to avoid freezing Streamlit
         import time
         now = time.time()
@@ -91,7 +92,7 @@ def load_config():
     """Load configuration from file"""
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(CONFIG_FILE, encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             st.error(f"Erreur lors du chargement de la config: {e}")
@@ -216,7 +217,7 @@ with st.sidebar:
                 client = openai.OpenAI(base_url=llm_base_url, api_key="lm-studio")
                 with st.spinner("Ping du serveur..."):
                     models = client.models.list()
-                    st.success(f"Connexion réussie ! Serveur actif.")
+                    st.success("Connexion réussie ! Serveur actif.")
             except Exception as e:
                 st.error(f"Échec de connexion : {e}")
     else:
@@ -309,7 +310,7 @@ with st.sidebar:
         if st.button("📂 Charger") and selected_session != "(nouvelle session)":
             session_path = saved_sessions[session_labels.index(selected_session)]
             try:
-                with open(session_path, "r", encoding="utf-8") as f:
+                with open(session_path, encoding="utf-8") as f:
                     _data = json.load(f)
                 st.success(f"Session chargée: {selected_session}")
                 st.session_state["loaded_session_data"] = _data
@@ -514,30 +515,30 @@ if submit_btn:
 # --- SECTION 2: RESULTATS ---
 if st.session_state.results:
     cs = st.session_state.results
-    
+
     # Affichage des erreurs de génération persistantes
     if cs.generation_agent.last_error:
         st.warning(f"⚠️ **Attention : Le générateur a rencontré une erreur et a utilisé la simulation.**\n\n**Détail de l'erreur :**\n{cs.generation_agent.last_error}")
-    
+
     hypotheses = list(cs.context_memory.hypotheses.values())
-    
+
     # Métriques Globales
     st.divider()
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Hypothèses Totales", len(hypotheses))
     m2.metric("Matchs Tournoi", len(cs.context_memory.tournament_history))
     m3.metric("Revues Effectuées", cs.reflection_agent.reviews_completed)
-    
+
     # Meilleure Hypothèse
     top_hyp = max(hypotheses, key=lambda h: h.elo_rating)
     m4.metric("Meilleur Elo", f"{top_hyp.elo_rating:.0f}")
 
     # --- ONGLETS D'ANALYSE ---
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🏆 Classement", "📚 Littérature", "🕸️ Knowledge Graph", "📊 Métriques", "📝 Meta-Review", "💾 Export"])
-    
+
     with tab1:
         st.subheader("Classement des Hypothèses")
-        
+
         # Conversion en DataFrame pour affichage propre
         data = []
         for h in hypotheses:
@@ -550,7 +551,7 @@ if st.session_state.results:
                 "Reviews": len(h.reviews)
             })
         df = pd.DataFrame(data).sort_values("Elo", ascending=False)
-        
+
         # Affichage interactif avec Edition
         edited_df = st.data_editor(
             df,
@@ -570,13 +571,13 @@ if st.session_state.results:
             width="stretch",
             disabled=["ID", "Elo", "Status", "Reviews", "Titre", "Nouveauté"] # Read-only for now to avoid state mismatch
         )
-        
+
         st.subheader("Détails des Hypothèses")
         selected_id = st.selectbox("Choisir une hypothèse pour voir les détails", df["ID"].tolist(), format_func=lambda x: df[df["ID"]==x]["Titre"].values[0])
-        
+
         if selected_id:
             h = cs.context_memory.hypotheses[selected_id]
-            
+
             with st.container():
                 st.markdown(f"""
                 <div class="hypothesis-card">
@@ -589,11 +590,11 @@ if st.session_state.results:
                     <p><strong>⚙️ Mécanisme Scientifique:</strong><br>{h.mechanism}</p>
                 </div>
                 """, unsafe_allow_html=True)
-                
+
                 if hasattr(h, 'experimental_results') and h.experimental_results:
                     st.markdown("#### 🧪 Résultats Expérimentaux Empiriques (Code Exécuté)")
                     st.code(h.experimental_results, language="log")
-                
+
                 c1, c2 = st.columns(2)
                 with c1:
                     st.markdown("#### 🧪 Prédictions Testables")
@@ -602,7 +603,7 @@ if st.session_state.results:
                             st.markdown(f"- {p}")
                     else:
                         st.info("Aucune prédiction générée.")
-                
+
                 with c2:
                     st.markdown("#### 📚 Preuves & Sources (Citation Tracking)")
                     # Affichage combiné des preuves et des papiers cités
@@ -611,17 +612,17 @@ if st.session_state.results:
                             st.markdown(f"- {g}")
                     else:
                         st.info("Aucune preuve spécifique générée.")
-                        
+
                     if h.cited_papers:
                         st.markdown("**Références Scientifiques Strictes:**")
                         for p in h.cited_papers:
                             st.markdown(f"- *{p}*")
-                
+
                 if h.reviews:
                     st.markdown("#### 🧐 Dernières Critiques")
                     last_review = h.reviews[-1]
                     st.info(f"**Feedback:** {last_review.feedback}")
-                    
+
                     # Scores sous forme de jauges
                     sc1, sc2, sc3, sc4 = st.columns(4)
                     sc1.progress(last_review.correctness_score, text="Correctness")
@@ -656,18 +657,18 @@ if st.session_state.results:
             for subj, relations in cs.graph_agent.graph.items():
                 for rel in relations:
                     graph_data.append({"Sujet (Entité)": subj, "Relation -> Objet": rel})
-            
+
             st.dataframe(pd.DataFrame(graph_data).head(100), width="stretch")
         else:
             st.info("Le graphe de connaissances n'est pas disponible pour cette session.")
 
     with tab4:
         st.subheader("Distribution des Scores Elo")
-        fig = px.bar(df, x='Titre', y='Elo', color='Nouveauté', 
+        fig = px.bar(df, x='Titre', y='Elo', color='Nouveauté',
                      title="Classement Elo par Nouveauté",
                      color_discrete_map={'low': '#94a3b8', 'medium': '#60a5fa', 'high': '#3b82f6', 'very_high': '#8b5cf6'})
         st.plotly_chart(fig, width="stretch")
-        
+
         st.subheader("Relation Qualité vs Nouveauté")
         # Préparer données pour scatter plot
         scatter_data = []
@@ -690,9 +691,9 @@ if st.session_state.results:
 
     with tab5:
         st.subheader("Synthèse de Recherche (Meta-Review)")
-        # Récupérer la dernière meta-review si disponible (c'est un dict retourné par la fonction, mais pas stocké directement dans context_memory de manière simple dans le code original, on va simuler un appel ou le récupérer si on l'avait stocké. 
+        # Récupérer la dernière meta-review si disponible (c'est un dict retourné par la fonction, mais pas stocké directement dans context_memory de manière simple dans le code original, on va simuler un appel ou le récupérer si on l'avait stocké.
         # Pour l'instant, on va régénérer une vue rapide ou afficher l'overview)
-        
+
         # Note: Dans l'implémentation actuelle, meta_review est retourné mais pas persisté dans context_memory explicitement sauf via logs.
         # On va demander à l'agent de le refaire rapidement pour l'affichage
         if st.button("Générer le rapport final"):
@@ -708,7 +709,7 @@ if st.session_state.results:
                     ))
                     loop.close()
                     st.markdown(mr['research_overview'])
-                    
+
                     st.markdown("### 💡 Suggestions d'amélioration")
                     for imp in mr['suggested_improvements']:
                         st.markdown(f"- {imp}")
@@ -719,25 +720,25 @@ if st.session_state.results:
 
     with tab6:
         st.subheader("Exporter les données")
-        
+
         # Préparation du JSON
         json_str = json.dumps({
             "goal": asdict(cs.context_memory.research_goal),
             "literature_context": cs.context_memory.literature_context,
             "hypotheses": [asdict(h) for h in hypotheses]
         }, indent=2, default=str)
-        
+
         st.download_button(
             label="📥 Télécharger le rapport brut JSON",
             data=json_str,
             file_name="co_scientist_results.json",
             mime="application/json"
         )
-        
+
         st.divider()
         st.subheader("📄 Génération de l'Article Scientifique (Phase 6)")
         st.markdown("Rédigez un article formel PDF incluant les hypothèses, les graphes de connaissances (GraphRAG) et les réflexions générées par l'IA.")
-        
+
         if st.button("Générer l'Article Scientifique Complet (PDF)", type="primary"):
             with st.spinner("Rédaction et compilation pdflatex en cours... (Patientez, cela nécessite plusieurs appels LLM)"):
                 try:

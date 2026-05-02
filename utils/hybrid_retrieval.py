@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ except ImportError:  # pragma: no cover
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
 
-def tokenize(text: str) -> List[str]:
+def tokenize(text: str) -> list[str]:
     """Lower-cased word tokenizer. Stable across platforms; no NLTK needed."""
     return _TOKEN_RE.findall((text or "").lower())
 
@@ -52,7 +53,7 @@ def tokenize(text: str) -> List[str]:
 def reciprocal_rank_fusion(
     rankings: Sequence[Sequence[str]],
     k: int = 60,
-) -> List[Tuple[str, float]]:
+) -> list[tuple[str, float]]:
     """Reciprocal Rank Fusion (Cormack et al., 2009).
 
     Each input ranking is a sequence of document IDs ordered best-first.
@@ -60,7 +61,7 @@ def reciprocal_rank_fusion(
     The ``k`` smoothing constant defaults to 60, the value used in the
     original paper.
     """
-    scores: Dict[str, float] = {}
+    scores: dict[str, float] = {}
     for ranking in rankings:
         for rank, doc_id in enumerate(ranking):
             scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
@@ -81,9 +82,9 @@ class BM25Index:
     querying.
     """
 
-    ids: List[str] = field(default_factory=list)
-    docs: List[str] = field(default_factory=list)
-    _tokens: List[List[str]] = field(default_factory=list)
+    ids: list[str] = field(default_factory=list)
+    docs: list[str] = field(default_factory=list)
+    _tokens: list[list[str]] = field(default_factory=list)
     _bm25: Any = None
 
     def add(self, doc_id: str, text: str) -> None:
@@ -108,7 +109,7 @@ class BM25Index:
     def is_ready(self) -> bool:
         return self._bm25 is not None and bool(self.ids)
 
-    def search(self, query: str, top_k: int = 50) -> List[Tuple[str, float]]:
+    def search(self, query: str, top_k: int = 50) -> list[tuple[str, float]]:
         """Return up to *top_k* ``(doc_id, bm25_score)`` pairs, best first."""
         if not self.is_ready:
             return []
@@ -165,9 +166,9 @@ class CrossEncoderReranker:
     def rerank(
         self,
         query: str,
-        candidates: List[Tuple[str, str]],
+        candidates: list[tuple[str, str]],
         top_k: int,
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Score and reorder ``(doc_id, text)`` candidates.
 
         Returns ``[(doc_id, ce_score), ...]`` sorted best-first. If the
@@ -200,13 +201,13 @@ class CrossEncoderReranker:
 
 def hybrid_search(
     query: str,
-    dense_results: List[Tuple[str, str]],
-    bm25: Optional[BM25Index],
+    dense_results: list[tuple[str, str]],
+    bm25: BM25Index | None,
     *,
     top_k: int = 5,
     fusion_candidates: int = 50,
-    reranker: Optional[CrossEncoderReranker] = None,
-) -> List[Tuple[str, float, str]]:
+    reranker: CrossEncoderReranker | None = None,
+) -> list[tuple[str, float, str]]:
     """Run BM25 + dense fusion (+ optional rerank) over a candidate pool.
 
     Parameters
@@ -231,10 +232,10 @@ def hybrid_search(
     List of ``(doc_id, score, text)`` ordered best-first.
     """
     # Build the dense ranking (just IDs for fusion)
-    dense_ranking: List[str] = [doc_id for doc_id, _ in dense_results[:fusion_candidates]]
+    dense_ranking: list[str] = [doc_id for doc_id, _ in dense_results[:fusion_candidates]]
 
     # Build the sparse ranking, if available
-    sparse_ranking: List[str] = []
+    sparse_ranking: list[str] = []
     if bm25 is not None and bm25.is_ready:
         sparse_ranking = [doc_id for doc_id, _ in bm25.search(query, top_k=fusion_candidates)]
 
@@ -246,7 +247,7 @@ def hybrid_search(
 
     # Map IDs back to text. Prefer dense's text since it's freshest from
     # the embedding store; fall back to BM25's docs when missing.
-    text_by_id: Dict[str, str] = {doc_id: text for doc_id, text in dense_results}
+    text_by_id: dict[str, str] = {doc_id: text for doc_id, text in dense_results}
     if bm25 is not None:
         for did, txt in zip(bm25.ids, bm25.docs):
             text_by_id.setdefault(did, txt)

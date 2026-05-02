@@ -3,9 +3,9 @@ Centralized Configuration Module for AI Co-Scientist
 Provides a single source of truth for all environment-based settings.
 """
 
+import logging
 import os
 import sys
-import logging
 
 logger = logging.getLogger(__name__)
 

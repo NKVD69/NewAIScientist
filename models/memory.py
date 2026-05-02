@@ -5,7 +5,7 @@ Persistent memory structures for the NewAIScientist system.
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .hypothesis import Hypothesis, ResearchGoal
 
@@ -30,33 +30,33 @@ class ContextMemory:
     """
     # --- Core (v2.2) ---
     research_goal: ResearchGoal = field(default_factory=ResearchGoal)
-    hypotheses: Dict[str, Hypothesis] = field(default_factory=dict)
-    tournament_history: List[TournamentMatch] = field(default_factory=list)
-    agent_performance_stats: Dict[str, Dict] = field(default_factory=dict)
+    hypotheses: dict[str, Hypothesis] = field(default_factory=dict)
+    tournament_history: list[TournamentMatch] = field(default_factory=list)
+    agent_performance_stats: dict[str, dict] = field(default_factory=dict)
     iteration_count: int = 0
-    literature_context: List[Dict] = field(default_factory=list)   # Retrieved papers
-    meta_reviews: List[Dict] = field(default_factory=list)          # Meta-review results
+    literature_context: list[dict] = field(default_factory=list)   # Retrieved papers
+    meta_reviews: list[dict] = field(default_factory=list)          # Meta-review results
     last_update: str = field(default_factory=lambda: datetime.now().isoformat())
     # Per-source ISO timestamp of the last successful literature search.
     # Used by ``LiteratureAgent.refresh()`` to fetch only the delta.
-    literature_last_seen: Dict[str, str] = field(default_factory=dict)
+    literature_last_seen: dict[str, str] = field(default_factory=dict)
 
     # --- v3.0 Phase tracking ---
     current_phase: str = "scoping"
 
     # Phase 1: Scoping
-    state_of_art: Dict = field(default_factory=dict)
-    research_questions: List = field(default_factory=list)
-    conceptual_framework: Dict = field(default_factory=dict)
+    state_of_art: dict = field(default_factory=dict)
+    research_questions: list = field(default_factory=list)
+    conceptual_framework: dict = field(default_factory=dict)
 
     # Phase 4: Experimental Design
-    experimental_protocols: Dict[str, Any] = field(default_factory=dict)
+    experimental_protocols: dict[str, Any] = field(default_factory=dict)
 
     # Phase 5: Data Analysis
-    datasets: Dict[str, Any] = field(default_factory=dict)
-    statistical_results: List = field(default_factory=list)
-    interpretations: Dict[str, str] = field(default_factory=dict)
+    datasets: dict[str, Any] = field(default_factory=dict)
+    statistical_results: list = field(default_factory=list)
+    interpretations: dict[str, str] = field(default_factory=dict)
 
     # Phase 6: Writing
     manuscript: Any = None
-    manuscript_sections: Dict[str, str] = field(default_factory=dict)
+    manuscript_sections: dict[str, str] = field(default_factory=dict)

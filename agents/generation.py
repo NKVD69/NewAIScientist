@@ -9,14 +9,13 @@ Responsible for:
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import logging
-from typing import Any, Dict, List, Optional
 
 from models.hypothesis import Hypothesis, ResearchGoal
-from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from utils.llm import ensure_str, get_llm_completion, parse_json_response
+
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -33,11 +32,11 @@ class GenerationAgent(BaseAgent):
         self.last_error = None
         self.cag_context = None  # Injected by CoScientist after literature search
 
-    async def generate_initial_hypotheses(self, 
-                                        goal: ResearchGoal, 
-                                        context_papers: List[Dict],
+    async def generate_initial_hypotheses(self,
+                                        goal: ResearchGoal,
+                                        context_papers: list[dict],
                                         count: int = 5,
-                                        rag_context: List[Dict] = None) -> List[Hypothesis]:
+                                        rag_context: list[dict] = None) -> list[Hypothesis]:
         """Generate initial hypotheses using LLM with Self-Refinement"""
         logger.info("Generating %d initial hypotheses with self-refinement...", count)
 
@@ -68,29 +67,29 @@ class GenerationAgent(BaseAgent):
 
         if not self.last_error:
              self.last_error = "LLM client not initialized (check logs)"
-        
+
         return await self._generate_simulated(goal, count)
 
     async def _refine_hypothesis(self, draft: Hypothesis, goal: ResearchGoal) -> Hypothesis:
         """Critique and refine a single hypothesis"""
         if not self.llm_client:
             return draft
-            
+
         prompt = f"""
         Critique and refine the following scientific hypothesis to ensure it is rigorous, specific, and testable.
-        
+
         Research Goal: {goal.title}
-        
+
         Draft Hypothesis:
         Title: {draft.title}
         Description: {draft.description}
         Mechanism: {draft.mechanism}
-        
+
         Identify 1 weakness (e.g. vague mechanism, lack of feasibility) and ANY improvements.
         Then rewrite the hypothesis in the SAME JSON format as the input, but improved.
         Output ONLY the JSON object.
         """
-        
+
         try:
             response = await get_llm_completion(
                 self.llm_client,
@@ -99,15 +98,18 @@ class GenerationAgent(BaseAgent):
                 json_mode=True
             )
             content = response.choices[0].message.content.strip()
-            
+
             # Robust parsing: remove markdown code blocks
-            if content.startswith("```json"): content = content[7:]
-            if content.startswith("```"): content = content[3:]
-            if content.endswith("```"): content = content[:-3]
+            if content.startswith("```json"):
+                content = content[7:]
+            if content.startswith("```"):
+                content = content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
             content = content.strip()
-            
+
             data = json.loads(content)
-            
+
             # Update draft with refined content
             draft.title = ensure_str(data.get("title", draft.title))
             draft.description = ensure_str(data.get("description", draft.description))
@@ -115,22 +117,22 @@ class GenerationAgent(BaseAgent):
             draft.mechanism = ensure_str(data.get("mechanism", draft.mechanism))
             draft.testable_predictions = data.get("testable_predictions", draft.testable_predictions)
             draft.limitations = data.get("limitations", draft.limitations)
-            
+
             return draft
         except Exception as e:
             logger.warning("Refinement failed for '%s': %s", draft.title, e)
             return draft
 
-    def _build_llm_prompt(self, goal: ResearchGoal, context_papers: List[Dict], count: int, rag_context: List[Dict] = None) -> str:
+    def _build_llm_prompt(self, goal: ResearchGoal, context_papers: list[dict], count: int, rag_context: list[dict] = None) -> str:
         """Build the LLM prompt for hypothesis generation"""
-        
+
         literature_context = ""
         if context_papers:
             literature_context = "\n**Relevant Literature Context:**\n"
             for i, paper in enumerate(context_papers, 1):
                 paper_id = hashlib.md5(paper.get('url', str(i)).encode()).hexdigest()[:8]
                 literature_context += f"[{paper_id}] {paper['title']} ({paper.get('published', 'N/A')}): {paper.get('summary', '')[:800]}...\n"
-        
+
         # Add RAG context if available (full-text chunks)
         rag_context_text = ""
         if rag_context:
@@ -140,7 +142,7 @@ class GenerationAgent(BaseAgent):
                 chunk_id = chunk.get('paper_id', str(i))[:8]
                 rag_context_text += f"Excerpt {i} from '[{chunk_id}] {chunk.get('paper_title', 'Unknown')}':\n"
                 rag_context_text += f"{chunk.get('text', '')[:1000]}...\n\n"
-        
+
         # CAG: Inject Key Findings if available (Hybrid Context)
         key_findings = ""
         if self.cag_context:
@@ -183,10 +185,10 @@ Veuillez générer {count} hypothèses distinctes. Pour chaque hypothèse, fourn
 Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} objets d'hypothèse. N'incluez aucun autre texte ou explication en dehors du tableau JSON.
 """
 
-    async def _generate_with_llm(self, goal: ResearchGoal, context_papers: List[Dict], count: int, rag_context: List[Dict] = None) -> List[Hypothesis]:
+    async def _generate_with_llm(self, goal: ResearchGoal, context_papers: list[dict], count: int, rag_context: list[dict] = None) -> list[Hypothesis]:
         """Generate hypotheses using a local LLM."""
         prompt = self._build_llm_prompt(goal, context_papers, count, rag_context)
-        
+
         try:
             response = await get_llm_completion(
                 self.llm_client,
@@ -197,12 +199,12 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
         except Exception as e:
             logger.warning("LLM generation failed: %s", e)
             return []
-        
+
         content = response.choices[0].message.content
-        
+
         try:
             data = parse_json_response(content)
-            
+
             # Handle various JSON structures
             if isinstance(data, list):
                 hypotheses_data = data
@@ -218,7 +220,7 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
             hypotheses = []
             for item in hypotheses_data:
                 cited_ids = item.get("cited_papers", [])
-                
+
                 # Reverse mapping: Find actual titles from context papers based on IDs
                 cited_titles = []
                 for cited_id in cited_ids:
@@ -228,14 +230,14 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
                         if clean_id == p_id:
                             cited_titles.append(f"{p['title']} ({p.get('published', '')})")
                             break
-                            
+
                 if not cited_titles and context_papers:
                     cited_titles = [f"{p['title']} ({p.get('published', '')})" for p in context_papers[:2]]
-                
+
                 grounding = item.get("grounding_evidence", [])
                 if not grounding and cited_titles:
                     grounding = [f"Supported by: {t}" for t in cited_titles[:2]]
-                
+
                 hypotheses.append(Hypothesis(
                     title=ensure_str(item.get("title", "")),
                     description=ensure_str(item.get("description", "")),
@@ -253,7 +255,7 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
             logger.debug("Raw response: %s", content)
             return []
 
-    async def _generate_simulated(self, goal: ResearchGoal, count: int) -> List[Hypothesis]:
+    async def _generate_simulated(self, goal: ResearchGoal, count: int) -> list[Hypothesis]:
         """Generate initial hypotheses using simulation (fallback)."""
         hypotheses = []
         strategies = [
@@ -262,39 +264,39 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
             self._generate_from_analogies,
             self._generate_unconventional,
         ]
-        
+
         for i in range(count):
             strategy = strategies[i % len(strategies)]
             hypothesis = await strategy(goal, i)
             hypotheses.append(hypothesis)
             self.generated_count += 1
-        
+
         return hypotheses
-    
+
     async def _generate_from_literature(self, goal: ResearchGoal, index: int) -> Hypothesis:
         """Simulate literature exploration-based generation"""
         h = Hypothesis(
             title=f"Hypothèse {index+1} (Basée sur la littérature) : Mécanisme de {goal.domain}",
             description=f"Cette hypothèse propose un nouveau mécanisme intégrant les recherches existantes sur {goal.domain}.",
-            reasoning=f"Le raisonnement repose sur l'observation que les études récentes montrent une corrélation mais pas de causalité claire.",
+            reasoning="Le raisonnement repose sur l'observation que les études récentes montrent une corrélation mais pas de causalité claire.",
             mechanism=f"S'appuyant sur la compréhension actuelle de {goal.domain}, ce mécanisme suggère une intégration interdisciplinaire.",
             generation_method="simulated-literature"
         )
         h.testable_predictions = [
             f"Prédiction 1 : Effet observable dans le contexte de {goal.domain}",
-            f"Prédiction 2 : Conséquence mesurable en aval",
-            f"Prédiction 3 : Changement de paramètre quantifiable"
+            "Prédiction 2 : Conséquence mesurable en aval",
+            "Prédiction 3 : Changement de paramètre quantifiable"
         ]
         h.grounding_evidence = ["Analyse de la littérature existante", "Données expérimentales publiées"]
         h.cited_papers = h.grounding_evidence.copy()
         return h
-    
+
     async def _generate_from_assumptions(self, goal: ResearchGoal, index: int) -> Hypothesis:
         """Generate from iterative assumptions"""
         h = Hypothesis(
             title=f"Hypothèse {index+1} (Basée sur les suppositions) : Nouvelle cible dans {goal.domain}",
             description=f"Cette hypothèse identifie une nouvelle cible thérapeutique potentielle dans {goal.domain}.",
-            reasoning=f"Si l'on suppose que la cible Z est en fait un effet et non une cause, l'analyse logique pointe vers un régulateur amont.",
+            reasoning="Si l'on suppose que la cible Z est en fait un effet et non une cause, l'analyse logique pointe vers un régulateur amont.",
             mechanism="Chaîne logique : Si la supposition X tient → effet intermédiaire → résultat final",
             generation_method="simulated-assumption"
         )
@@ -306,7 +308,7 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
         h.grounding_evidence = ["Déduction logique", "Cadre analytique inter-domaines"]
         h.limitations = ["Suppose une progression linéaire qui pourrait être plus complexe"]
         return h
-    
+
     async def _generate_from_analogies(self, goal: ResearchGoal, index: int) -> Hypothesis:
         """Generate using analogical reasoning"""
         h = Hypothesis(
@@ -321,7 +323,7 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
         ]
         h.limitations = ["Le raisonnement analogique peut ne pas être entièrement transférable"]
         return h
-    
+
     async def _generate_unconventional(self, goal: ResearchGoal, index: int) -> Hypothesis:
         """Generate unconventional/out-of-box ideas"""
         h = Hypothesis(

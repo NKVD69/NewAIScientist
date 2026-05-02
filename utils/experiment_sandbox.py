@@ -27,7 +27,6 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +100,7 @@ class EntityResult:
     error: str = ""
 
 
-def extract_entities(text: str) -> Dict[str, List[str]]:
+def extract_entities(text: str) -> dict[str, list[str]]:
     """Pull UniProt / PubChem / gene-symbol candidates from free text.
 
     The result is keyed by scheme; values are deduplicated and sorted.
@@ -163,7 +162,7 @@ async def validate_entities(
     text: str,
     timeout: float = 5.0,
     max_concurrent: int = 4,
-) -> List[EntityResult]:
+) -> list[EntityResult]:
     """Verify every UniProt / PubChem identifier in *text* concurrently."""
     ids = extract_entities(text)
     sem = asyncio.Semaphore(max_concurrent)
@@ -182,8 +181,8 @@ async def validate_entities(
 
 def feasibility_summary(
     required_n: int,
-    entity_results: List[EntityResult],
-) -> Dict[str, object]:
+    entity_results: list[EntityResult],
+) -> dict[str, object]:
     """Compact dict the ExperimentAgent can include in its report."""
     total = len(entity_results)
     verified = sum(1 for r in entity_results if r.verified)

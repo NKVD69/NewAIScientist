@@ -10,7 +10,8 @@ hooking into ``sys.stdin``.
 from __future__ import annotations
 
 import logging
-from typing import Callable, Iterable, List, Optional
+from collections.abc import Iterable
+from typing import Callable
 
 from models.hypothesis import Hypothesis, UserFeedback
 
@@ -23,7 +24,7 @@ PromptFn = Callable[[str], str]
 _VALID_VERDICTS = {"agree", "disagree", "refine", "skip"}
 
 
-def _normalise_verdict(raw: str) -> Optional[str]:
+def _normalise_verdict(raw: str) -> str | None:
     """Map common short forms to the canonical verdict.
 
     Accepted aliases:
@@ -51,7 +52,7 @@ def collect_feedback_cli(
     prompt: PromptFn = input,
     output: Callable[[str], None] = print,
     max_attempts: int = 3,
-) -> List[UserFeedback]:
+) -> list[UserFeedback]:
     """Drive an interactive feedback session over a list of hypotheses.
 
     For each hypothesis the user is asked for a verdict; if the verdict is
@@ -59,7 +60,7 @@ def collect_feedback_cli(
     hypotheses produce no UserFeedback entry. Invalid verdicts are reprompted
     up to ``max_attempts`` times before defaulting to ``skip``.
     """
-    feedbacks: List[UserFeedback] = []
+    feedbacks: list[UserFeedback] = []
     for i, hyp in enumerate(hypotheses, 1):
         output("")
         output("=" * 70)
@@ -68,8 +69,8 @@ def collect_feedback_cli(
         if hyp.mechanism:
             output(f"    Mechanism: {hyp.mechanism[:200]}")
 
-        verdict: Optional[str] = None
-        for attempt in range(max_attempts):
+        verdict: str | None = None
+        for _attempt in range(max_attempts):
             raw = prompt("    Verdict [a]gree / [d]isagree / [r]efine / [s]kip: ")
             verdict = _normalise_verdict(raw)
             if verdict is not None:

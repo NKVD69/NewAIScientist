@@ -13,11 +13,12 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from models.hypothesis import Hypothesis, ResearchGoal
-from utils.llm import get_llm_completion, parse_json_response, ensure_str
+from utils.llm import get_llm_completion
 from utils.safety import check_code_safety
+
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class ExperimentAgent(BaseAgent):
         effect_size: float = 0.5,
         alpha: float = 0.05,
         power: float = 0.80,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Estimate sample size and validate biomedical entities mentioned.
 
         See :mod:`utils.experiment_sandbox` for the underlying machinery.
@@ -76,23 +77,23 @@ class ExperimentAgent(BaseAgent):
     async def run_experiment(self, hypothesis: Hypothesis, goal: ResearchGoal) -> str:
         if not self.llm_client:
             return "Simulation skipped: No LLM available for experimental design."
-            
+
         logger.info("Designing experiment for hypothesis: %s", hypothesis.title)
-        
+
         prompt = f"""
         Research Goal: {goal.title}
         Hypothesis: {hypothesis.title}
         Mechanism: {hypothesis.mechanism}
         Predictions: {', '.join(hypothesis.testable_predictions)}
-        
+
         You are an AI Scientist tasked with empirically validating this hypothesis.
-        Write a Python 3 script that uses standard libraries (numpy, scipy, sklearn) to run a simulation or statistical test for the predictions of this hypothesis. 
+        Write a Python 3 script that uses standard libraries (numpy, scipy, sklearn) to run a simulation or statistical test for the predictions of this hypothesis.
         It MUST be completely self-contained, without assuming external files exist unless you scrape them. Do not use UI libraries.
         It MUST print a clear summary of the results to stdout at the end, concluding whether the data supports the hypothesis.
-        
+
         Output ONLY the python code inside a ```python block. No other explanation.
         """
-        
+
         try:
             response = await get_llm_completion(
                 self.llm_client,
@@ -101,7 +102,7 @@ class ExperimentAgent(BaseAgent):
                 json_mode=False
             )
             content = response.choices[0].message.content.strip()
-            
+
             code = ""
             if "```python" in content:
                 code = content.split("```python")[1].split("```")[0].strip()
@@ -123,13 +124,13 @@ class ExperimentAgent(BaseAgent):
 
             logger.info("Safety check passed. Executing experiment script...")
 
-            import tempfile
             import subprocess
+            import tempfile
 
             env = os.environ.copy()
             for key in ('OPENAI_API_KEY', 'NCBI_API_KEY', 'ANTHROPIC_API_KEY'):
                 env.pop(key, None)
-            
+
             # Remove network-related env vars to partially restrict network access
             env.pop('HTTP_PROXY', None)
             env.pop('HTTPS_PROXY', None)
@@ -160,14 +161,14 @@ class ExperimentAgent(BaseAgent):
 
                     if not output.strip():
                         output = "Script ran successfully but produced no output."
-                        
+
                     hypothesis.experimental_results = f"Experimental Results:\n{output[:1500]}"
                     self.experiments_run += 1
                     return hypothesis.experimental_results
                 except subprocess.TimeoutExpired:
                     hypothesis.experimental_results = "Experiment simulation timed out after 30 seconds."
                     return hypothesis.experimental_results
-                    
+
         except Exception as e:
             hypothesis.experimental_results = f"Experiment implementation failed: {e}"
             return hypothesis.experimental_results

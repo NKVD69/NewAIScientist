@@ -1,5 +1,6 @@
-from Bio import Entrez
 import re
+
+from Bio import Entrez
 
 Entrez.email = 'test@example.com'
 
