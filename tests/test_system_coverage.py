@@ -20,12 +20,15 @@ class TestLLMUtils:
         client = MagicMock()
         mock_resp = MagicMock()
         mock_resp.usage.total_tokens = 10
-        # Fail once, then succeed
+        # Fail once with a *retryable* transient error, then succeed.
+        # The post-rebase _is_retryable_error classifier only retries on
+        # known-transient signals (timeouts, rate-limit, 5xx, connection),
+        # so the failure message must match one of those patterns.
         client.chat.completions.create.side_effect = [
-            Exception("API Error"),
-            mock_resp
+            Exception("Connection timeout"),
+            mock_resp,
         ]
-        
+
         with patch("utils.llm.cfg.get_llm_model_name", return_value="gpt-4"):
             with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
                 resp = await get_llm_completion(client, [{"role": "user", "content": "hi"}], max_retries=2)
@@ -77,6 +80,10 @@ class TestLLMUtils:
 class TestRAGEngine:
     @pytest.fixture
     def mock_rag(self):
+        # The PersistentClient patch only works when chromadb is installed.
+        import rag_system
+        if rag_system.chromadb is None:
+            pytest.skip("chromadb not installed")
         with patch("rag_system.SentenceTransformer"), \
              patch("rag_system.chromadb.PersistentClient"):
             engine = RAGEngine()
@@ -87,10 +94,12 @@ class TestRAGEngine:
 
     @pytest.mark.asyncio
     async def test_process_papers(self, mock_rag):
+        from pathlib import Path
         papers = [{"title": "P1", "summary": "Summary of P1", "url": "http://p1"}]
-        
-        # Mock dependencies to avoid network/file IO
-        mock_rag.downloader.download_paper = AsyncMock(return_value="/tmp/p1.txt")
+
+        # Mock dependencies to avoid network/file IO. process_papers now
+        # inspects file_path.suffix, so we must return a real Path object.
+        mock_rag.downloader.download_paper = AsyncMock(return_value=Path("/tmp/p1.txt"))
         mock_rag.processor.extract_text = AsyncMock(return_value="Extracted text content from paper.")
         mock_rag.embedding_model.encode.return_value = MagicMock(tolist=lambda: [[0.1]*384])
         

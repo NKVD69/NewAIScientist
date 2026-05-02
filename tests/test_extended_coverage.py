@@ -210,10 +210,12 @@ class TestRAGExtended:
     async def test_pdf_downloader_arxiv_logic(self):
         downloader = PDFDownloader(cache_dir="./test_papers")
         url = "http://arxiv.org/abs/2103.12345"
-        # Mocking the actual download
+        # The cache key is the md5 of the *normalised* URL (https arxiv.org/abs form).
+        from rag_system import _normalize_arxiv_url
+        expected_hash = hashlib.md5(_normalize_arxiv_url(url).encode()).hexdigest()
         with patch("urllib.request.urlretrieve"), patch("pathlib.Path.exists", return_value=False):
             path = await downloader.download_arxiv_pdf(url)
-            assert "2103.12345.pdf" in str(path) or hashlib.md5((url.replace("/abs/", "/pdf/") + ".pdf").encode()).hexdigest() in str(path)
+            assert expected_hash in str(path)
         
         if os.path.exists("./test_papers"):
             import shutil
@@ -245,8 +247,11 @@ class TestCoScientistExtended:
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = json.dumps({"domains": ["Biology"], "databases": ["pubmed"]})
-        
-        with patch("co_scientist._get_llm_completion", return_value=mock_response):
+
+        # analyze_research_description() does an in-function import of
+        # utils.llm.get_llm_completion, so the patch target must be there
+        # (the legacy co_scientist._get_llm_completion re-export is unused).
+        with patch("utils.llm.get_llm_completion", new=AsyncMock(return_value=mock_response)):
             result = await co_scientist.analyze_research_description("cancer research")
             assert "Biology" in result["domains"]
 
@@ -255,7 +260,11 @@ class TestCoScientistExtended:
         co_scientist.literature_agent.search_literature = AsyncMock(return_value=[{"title": "P1"}])
         co_scientist.literature_agent.extract_key_findings = AsyncMock(return_value="Findings")
         co_scientist.graph_agent.build_graph = AsyncMock(return_value="Graph")
-        
+        # RAG indexing path is now awaited; provide an AsyncMock so the
+        # `await self.literature_agent.process_papers_with_rag(...)` works.
+        co_scientist.literature_agent.process_papers_with_rag = AsyncMock(return_value=0)
+        co_scientist.literature_agent.rag_engine = None  # bypass the indexing branch entirely
+
         papers = await co_scientist.run_literature_search(iterations=1)
         assert len(papers) == 1
         assert co_scientist.generation_agent.cag_context == "Findings\n\nGraph"
