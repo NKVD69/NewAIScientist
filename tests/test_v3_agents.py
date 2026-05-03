@@ -172,11 +172,17 @@ class TestExperimentAgent:
 
             await agent.run_experiment(hyp, goal)
 
-            # Verify cwd was passed to subprocess.run
+            # Verify cwd was passed to subprocess.run and points inside the
+            # OS temp tree (Windows: ...\Temp\..., Linux/macOS: /tmp/...).
             assert mock_run.called
             args, kwargs = mock_run.call_args
             assert "cwd" in kwargs
-            assert "temp" in str(kwargs["cwd"]).lower()
+            import tempfile
+            cwd_str = str(kwargs["cwd"])
+            tmp_root = tempfile.gettempdir()
+            assert cwd_str.startswith(tmp_root) or "temp" in cwd_str.lower() or "tmp" in cwd_str.lower(), (
+                f"cwd {cwd_str!r} not under tempdir {tmp_root!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
