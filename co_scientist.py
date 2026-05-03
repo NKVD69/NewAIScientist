@@ -20,6 +20,8 @@ import random
 from dataclasses import asdict
 from typing import Any
 
+# Re-exported for legacy callers (e.g. scripts/generate_paper.py).
+import config  # noqa: F401
 from agents import (
     AnalysisAgent,
     EvolutionAgent,
@@ -51,9 +53,13 @@ from models import (
 logger = logging.getLogger(__name__)
 
 # -- Backward-compatible re-exports (DEPRECATED — use utils.llm directly) ----
-from utils.llm import (  # noqa: F401, E402
-    get_llm_completion as _get_llm_completion,
-)
+# scripts/generate_paper.py and possibly other external callers still
+# import these legacy names from co_scientist; keep them re-exported.
+# (Each line gets its own noqa so ruff's autofix never drops them again.)
+from utils.llm import ensure_str as _ensure_str  # noqa: F401, E402
+from utils.llm import get_llm_completion as _get_llm_completion  # noqa: F401, E402
+from utils.llm import get_llm_usage_stats  # noqa: F401, E402
+from utils.llm import parse_json_response as _parse_json_response  # noqa: F401, E402
 from utils.safety import check_code_safety as _check_code_safety  # noqa: F401, E402
 
 try:
