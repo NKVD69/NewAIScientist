@@ -18,7 +18,7 @@ import logging
 import os
 import random
 from dataclasses import asdict
-from typing import Any, Optional
+from typing import Any
 
 from agents import (
     AnalysisAgent,
@@ -331,7 +331,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
 
         strategies = ["enhancement", "simplification", "out_of_box"]
         evolved = []
-        for hyp, strategy in zip(top_hyps, strategies):
+        for hyp, strategy in zip(top_hyps, strategies, strict=False):
             new_hyp = await self.evolution_agent.evolve_hypothesis(hyp, strategy=strategy)
             self.context_memory.hypotheses[new_hyp.id] = new_hyp
             evolved.append(new_hyp)
@@ -358,7 +358,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     async def run_interactive_feedback_cycle(
         self,
         top_n: int = 3,
-        feedbacks: Optional[list[UserFeedback]] = None,
+        feedbacks: list[UserFeedback] | None = None,
     ) -> list[Hypothesis]:
         """Inject scientist feedback into hypothesis evolution.
 

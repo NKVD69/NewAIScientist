@@ -9,7 +9,6 @@ import json
 import os
 from dataclasses import asdict
 from datetime import datetime
-from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -48,8 +47,8 @@ class GoalInput(BaseModel):
     title: str
     description: str
     domain: str
-    preferences: Optional[dict] = {}
-    constraints: Optional[list[str]] = []
+    preferences: dict | None = {}
+    constraints: list[str] | None = []
 
 
 class LiteratureInput(BaseModel):
@@ -67,7 +66,7 @@ class TournamentInput(BaseModel):
 
 
 class AnalysisInput(BaseModel):
-    file_path: Optional[str] = None
+    file_path: str | None = None
 
 
 # --------------------------------------------------------------------------

@@ -118,7 +118,7 @@ class BM25Index:
             return []
         scores = self._bm25.get_scores(q_tokens)
         ranked = sorted(
-            zip(self.ids, scores), key=lambda x: x[1], reverse=True,
+            zip(self.ids, scores, strict=False), key=lambda x: x[1], reverse=True,
         )
         # Strip zero-score tail to keep the ranking honest.
         return [(d, s) for d, s in ranked[:top_k] if s > 0]
@@ -249,7 +249,7 @@ def hybrid_search(
     # the embedding store; fall back to BM25's docs when missing.
     text_by_id: dict[str, str] = {doc_id: text for doc_id, text in dense_results}
     if bm25 is not None:
-        for did, txt in zip(bm25.ids, bm25.docs):
+        for did, txt in zip(bm25.ids, bm25.docs, strict=False):
             text_by_id.setdefault(did, txt)
 
     # Slice down to the rerank window

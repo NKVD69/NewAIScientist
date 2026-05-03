@@ -14,7 +14,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 # ============================================================================
 # ENUMS
@@ -251,7 +251,7 @@ class ResearchQuestion:
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     question: str = ""
     type: str = "exploratory"  # descriptive, correlational, causal, exploratory
-    pico: Optional[dict] = None  # Population, Intervention, Comparison, Outcome
+    pico: dict | None = None  # Population, Intervention, Comparison, Outcome
     novelty_score: float = 0.0
     feasibility_score: float = 0.0
     impact_score: float = 0.0

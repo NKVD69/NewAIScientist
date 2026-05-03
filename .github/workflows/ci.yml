@@ -10,18 +10,14 @@ jobs:
   lint-and-test:
     name: Lint, type-check, test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false   # diagnostic: let both Python versions complete so we see all failures
-      matrix:
-        python-version: ["3.10", "3.11"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
           cache: pip
 
       - name: Install dependencies
@@ -35,46 +31,5 @@ jobs:
       - name: Type-check (mypy, non-blocking)
         run: mypy --no-error-summary || true
 
-      - name: Show Python and key package versions
-        run: |
-          python --version
-          pip list | grep -E "^(pytest|pytest-asyncio|chromadb|rank-bm25|pdfplumber|sentence-transformers|openai|fpdf2|pypdf|fastapi|streamlit|pandas|numpy)" || true
-
       - name: Run tests
-        id: tests
-        run: |
-          set +e
-          pytest tests/ -v --tb=long --color=no \
-            --ignore=tests/test_suite_legacy.py \
-            --junit-xml=pytest-results.xml \
-            2>&1 | tee pytest-output.log
-          echo "exit=$?" >> $GITHUB_OUTPUT
-          # Always continue so the artifact + summary steps below run.
-          exit 0
-
-      - name: Append failures to job summary
-        if: always()
-        run: |
-          {
-            echo "## Pytest output (Python ${{ matrix.python-version }})"
-            echo ""
-            echo '```'
-            tail -200 pytest-output.log || echo "(no output)"
-            echo '```'
-          } >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload test artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pytest-output-py${{ matrix.python-version }}
-          path: |
-            pytest-output.log
-            pytest-results.xml
-          if-no-files-found: ignore
-
-      - name: Fail step if pytest failed
-        if: steps.tests.outputs.exit != '0'
-        run: |
-          echo "pytest exited with ${{ steps.tests.outputs.exit }}"
-          exit 1
+        run: pytest tests/ -q --ignore=tests/test_suite_legacy.py

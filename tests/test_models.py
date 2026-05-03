@@ -43,8 +43,8 @@ class TestReviewCritique:
 
     def test_scores_are_floats(self):
         r = ReviewCritique("test", 1, 0, 0.5, 0.75, "feedback")
-        assert isinstance(r.correctness_score, (int, float))
-        assert isinstance(r.novelty_score, (int, float))
+        assert isinstance(r.correctness_score, int | float)
+        assert isinstance(r.novelty_score, int | float)
 
 
 # ---------------------------------------------------------------------------

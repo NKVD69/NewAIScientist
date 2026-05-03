@@ -10,7 +10,6 @@ import re
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import config
 
@@ -105,8 +104,8 @@ class DocumentChunk:
     paper_id: str
     paper_title: str
     chunk_index: int
-    page_number: Optional[int] = None
-    section: Optional[str] = None
+    page_number: int | None = None
+    section: str | None = None
     chunk_type: str = "text"   # "text" | "table" | "figure_caption"
     metadata: dict = None
 
@@ -182,7 +181,7 @@ class PDFDownloader:
         url_hash = hashlib.md5(_normalize_arxiv_url(url).encode()).hexdigest()
         return self.cache_dir / f"{url_hash}.pdf"
 
-    async def download_arxiv_pdf(self, paper_url: str) -> Optional[Path]:
+    async def download_arxiv_pdf(self, paper_url: str) -> Path | None:
         """Download PDF from ArXiv URL with robust conversion."""
         try:
             # Clean URL
@@ -229,7 +228,7 @@ class PDFDownloader:
             logger.warning("Failed to download ArXiv PDF: %s", e)
             return None
 
-    async def _get_pmcid_from_pmid(self, pmid: str) -> Optional[str]:
+    async def _get_pmcid_from_pmid(self, pmid: str) -> str | None:
         """Convert PMID to PMCID using Entrez API"""
         if not Entrez:
             return None
@@ -251,7 +250,7 @@ class PDFDownloader:
             logger.warning("Failed to convert PMID %s to PMCID: %s", pmid, e)
             return None
 
-    async def download_pubmed_pdf(self, paper_url: str) -> Optional[Path]:
+    async def download_pubmed_pdf(self, paper_url: str) -> Path | None:
         """Download PDF from PubMed (via PMC when available)"""
         # Extract PMID from URL
         # Format: https://pubmed.ncbi.nlm.nih.gov/38218645/
@@ -318,7 +317,7 @@ class PDFDownloader:
             logger.warning("Failed to download PMC text for PMID %s: %s", pmid, e)
             return None
 
-    async def download_paper(self, paper: dict) -> Optional[Path]:
+    async def download_paper(self, paper: dict) -> Path | None:
         """Download paper PDF based on source"""
         url = paper.get("url", "")
         source = paper.get("source", "")
@@ -338,7 +337,7 @@ class DocumentProcessor:
         if not pypdf:
             logger.warning("pypdf not installed — PDF processing disabled.")
 
-    async def extract_text(self, file_path: Path) -> Optional[str]:
+    async def extract_text(self, file_path: Path) -> str | None:
         """Extract all text from PDF or TXT"""
         try:
             if file_path.suffix.lower() == '.txt':
@@ -686,7 +685,7 @@ class RAGEngine:
                 self._bm25_dirty = False
                 return
             idx = BM25Index()
-            for cid, text in zip(ids, docs):
+            for cid, text in zip(ids, docs, strict=False):
                 idx.add(cid, text or "")
             idx.build()
             self._bm25 = idx
@@ -751,7 +750,7 @@ class RAGEngine:
             ids = dense_raw.get("ids", [[]])[0]
             docs = dense_raw["documents"][0]
             metas = dense_raw.get("metadatas", [[]])[0]
-            for cid, text, meta in zip(ids, docs, metas):
+            for cid, text, meta in zip(ids, docs, metas, strict=False):
                 dense_pairs.append((cid, text))
                 meta_by_id[cid] = meta or {}
 

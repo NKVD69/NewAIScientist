@@ -2,7 +2,6 @@
 Base class for all NewAIScientist agents.
 """
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,7 @@ class BaseAgent:
     name: str = "Base"
 
     def __init__(self, use_local_llm: bool = True):
-        self.llm_client: Optional[object] = None
+        self.llm_client: object | None = None
 
         if use_local_llm:
             self._init_llm_client()

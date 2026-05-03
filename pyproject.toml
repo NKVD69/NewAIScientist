@@ -2,7 +2,7 @@
 name = "new-ai-scientist"
 version = "3.0.0"
 description = "AI Co-Scientist: Multi-Agent System for Scientific Discovery"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 
 [project.optional-dependencies]
 analysis = ["pandas>=2.0.0"]
@@ -17,7 +17,7 @@ addopts = "-v --tb=short"
 
 [tool.ruff]
 line-length = 110
-target-version = "py39"
+target-version = "py312"
 extend-exclude = [
     "chroma_db",
     "papers",
@@ -41,7 +41,7 @@ ignore = [
 "scripts/*" = ["E402"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.12"
 ignore_missing_imports = true
 warn_unused_ignores = true
 files = ["agents", "models", "utils", "config.py"]
