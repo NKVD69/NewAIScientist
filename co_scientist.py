@@ -474,6 +474,26 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         return {"results": results, "interpretation": interpretation}
 
     # ------------------------------------------------------------------
+    # HYPOTHESIS MUTATION (PATCH endpoint)
+    # ------------------------------------------------------------------
+
+    def update_hypothesis(self, hypothesis_id: str, updates: dict) -> Hypothesis | None:
+        """Apply partial updates to a stored hypothesis.
+
+        Only whitelisted fields can be patched, to prevent callers from
+        corrupting Elo / status / parent IDs via the public API.
+        Returns the mutated hypothesis, or None if the ID is unknown.
+        """
+        allowed = {"scientist_notes", "limitations", "testable_predictions"}
+        hyp = self.context_memory.hypotheses.get(hypothesis_id)
+        if hyp is None:
+            return None
+        for key, value in (updates or {}).items():
+            if key in allowed and hasattr(hyp, key):
+                setattr(hyp, key, value)
+        return hyp
+
+    # ------------------------------------------------------------------
     # PHASE 6: WRITING
     # ------------------------------------------------------------------
 

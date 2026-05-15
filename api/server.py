@@ -3,19 +3,37 @@ api/server.py — FastAPI backend for NewAI Scientist v3.0
 
 Provides REST endpoints for all 6 workflow phases + session management.
 Designed to be consumed by the React frontend.
+
+Security:
+  - Every state-mutating endpoint requires an ``X-API-Key`` header (see
+    ``api/security.py``). Set the ``API_KEYS`` env var to enable auth, or
+    ``ALLOW_UNAUTHENTICATED=1`` for local dev only.
+  - CORS origins come from the ``CORS_ALLOWED_ORIGINS`` env var
+    (comma-separated); wildcard ``*`` is refused with credentials.
+  - Uploaded filenames are sanitised; user-supplied file paths must
+    resolve inside ``UPLOAD_DIR``.
 """
 
 import json
+import logging
 import os
 from dataclasses import asdict
 from datetime import datetime
 
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from api.security import (
+    get_cors_origins,
+    require_api_key,
+    safe_path_within,
+    sanitise_filename,
+)
 from co_scientist import CoScientist
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="NewAI Scientist API",
@@ -23,13 +41,14 @@ app = FastAPI(
     version="3.0.0",
 )
 
-# Enable CORS for React frontend
+# CORS — explicit allowlist driven by env var; never the wildcard "*"
+# combined with credentials (forbidden by the CORS spec).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
 )
 
 # Global instance (session-based in production)
@@ -37,6 +56,9 @@ scientist = CoScientist()
 
 SESSIONS_DIR = os.path.join(os.path.dirname(__file__), "..", "sessions")
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "uploads")
+
+# Whitelisted file types for analysis uploads.
+ALLOWED_DATASET_EXTENSIONS = (".csv", ".tsv")
 
 
 # --------------------------------------------------------------------------
@@ -75,10 +97,11 @@ class AnalysisInput(BaseModel):
 
 @app.get("/")
 def read_root():
+    """Health check — intentionally unauthenticated."""
     return {"status": "online", "version": "3.0.0", "timestamp": datetime.now().isoformat()}
 
 
-@app.get("/session/state")
+@app.get("/session/state", dependencies=[Depends(require_api_key)])
 async def get_state():
     """Returns the full current context memory state."""
     ctx = scientist.context_memory
@@ -95,7 +118,7 @@ async def get_state():
     }
 
 
-@app.get("/session/hypotheses")
+@app.get("/session/hypotheses", dependencies=[Depends(require_api_key)])
 async def get_hypotheses():
     """Returns all hypotheses sorted by Elo."""
     hyps = sorted(
@@ -121,13 +144,13 @@ async def get_hypotheses():
     ]
 
 
-@app.get("/session/papers")
+@app.get("/session/papers", dependencies=[Depends(require_api_key)])
 async def get_papers():
     """Returns all retrieved papers."""
     return scientist.context_memory.literature_context
 
 
-@app.get("/session/questions")
+@app.get("/session/questions", dependencies=[Depends(require_api_key)])
 async def get_research_questions():
     """Returns research questions from scoping phase."""
     questions = scientist.context_memory.research_questions
@@ -136,7 +159,7 @@ async def get_research_questions():
     return [asdict(q) if hasattr(q, '__dataclass_fields__') else q for q in questions]
 
 
-@app.get("/session/scoping")
+@app.get("/session/scoping", dependencies=[Depends(require_api_key)])
 async def get_scoping_results():
     """Returns state of art, questions, and conceptual framework."""
     return {
@@ -150,7 +173,7 @@ async def get_scoping_results():
 # Workflow Phase Endpoints
 # --------------------------------------------------------------------------
 
-@app.post("/goal/initialize")
+@app.post("/goal/initialize", dependencies=[Depends(require_api_key)])
 async def init_goal(input: GoalInput):
     goal = await scientist.initialize_research_goal(
         title=input.title,
@@ -162,14 +185,14 @@ async def init_goal(input: GoalInput):
     return asdict(goal)
 
 
-@app.post("/goal/analyze")
+@app.post("/goal/analyze", dependencies=[Depends(require_api_key)])
 async def analyze_description(description: str):
     """Auto-detect domain and databases from research description."""
     result = await scientist.analyze_research_description(description)
     return result
 
 
-@app.post("/workflow/literature")
+@app.post("/workflow/literature", dependencies=[Depends(require_api_key)])
 async def run_literature(input: LiteratureInput):
     papers = await scientist.run_literature_search(
         max_results=input.max_results,
@@ -179,7 +202,7 @@ async def run_literature(input: LiteratureInput):
     return {"count": len(papers), "papers": papers}
 
 
-@app.post("/workflow/scoping")
+@app.post("/workflow/scoping", dependencies=[Depends(require_api_key)])
 async def run_scoping():
     result = await scientist.run_scoping_cycle()
     # Convert StateOfArt dataclass to dict
@@ -190,7 +213,7 @@ async def run_scoping():
     }
 
 
-@app.post("/workflow/hypotheses")
+@app.post("/workflow/hypotheses", dependencies=[Depends(require_api_key)])
 async def generate_hypotheses(input: HypothesisGenerationInput):
     hypotheses = await scientist.run_hypothesis_generation_cycle(num_hypotheses=input.count)
     return {
@@ -207,19 +230,19 @@ async def generate_hypotheses(input: HypothesisGenerationInput):
     }
 
 
-@app.post("/workflow/review")
+@app.post("/workflow/review", dependencies=[Depends(require_api_key)])
 async def run_review():
     reviews = await scientist.run_review_cycle()
     return {"count": len(reviews), "reviews": [asdict(r) for r in reviews]}
 
 
-@app.post("/workflow/tournament")
+@app.post("/workflow/tournament", dependencies=[Depends(require_api_key)])
 async def run_tournament(input: TournamentInput):
     matches = await scientist.run_tournament_cycle(num_matches=input.num_matches)
     return {"count": len(matches), "matches": [asdict(m) for m in matches]}
 
 
-@app.post("/workflow/evolution")
+@app.post("/workflow/evolution", dependencies=[Depends(require_api_key)])
 async def run_evolution():
     evolved = await scientist.run_evolution_cycle()
     return {
@@ -228,13 +251,13 @@ async def run_evolution():
     }
 
 
-@app.post("/workflow/meta-review")
+@app.post("/workflow/meta-review", dependencies=[Depends(require_api_key)])
 async def run_meta_review():
     meta = await scientist.run_meta_review_cycle()
     return meta
 
 
-@app.post("/workflow/protocol/{hypothesis_id}")
+@app.post("/workflow/protocol/{hypothesis_id}", dependencies=[Depends(require_api_key)])
 async def generate_protocol(hypothesis_id: str):
     protocol = await scientist.run_protocol_cycle(hypothesis_id=hypothesis_id)
     if not protocol:
@@ -242,21 +265,45 @@ async def generate_protocol(hypothesis_id: str):
     return asdict(protocol)
 
 
-@app.post("/workflow/analysis/{hypothesis_id}")
+@app.post("/workflow/analysis/{hypothesis_id}", dependencies=[Depends(require_api_key)])
 async def run_analysis(hypothesis_id: str, input: AnalysisInput):
+    # Path-traversal defence: if the caller passed a file_path, it must
+    # resolve inside UPLOAD_DIR. Empty / None ⇒ pass through (orchestrator
+    # falls back to "no dataset" mode).
+    resolved_path: str | None = None
+    if input.file_path:
+        try:
+            resolved = safe_path_within(input.file_path, UPLOAD_DIR)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not resolved.is_file():
+            raise HTTPException(
+                status_code=404, detail=f"dataset not found: {resolved.name}",
+            )
+        resolved_path = str(resolved)
+
     result = await scientist.run_analysis_cycle(
-        hypothesis_id=hypothesis_id, file_path=input.file_path,
+        hypothesis_id=hypothesis_id, file_path=resolved_path,
     )
     if not result:
         raise HTTPException(status_code=404, detail="Hypothesis not found")
     return result
 
-@app.patch("/hypothesis/{hypothesis_id}/notes")
-async def update_notes(hypothesis_id: str, notes: str):
-    hyp = await scientist.update_hypothesis(hypothesis_id, {"scientist_notes": notes})
-    return hyp
 
-@app.post("/workflow/writing")
+@app.patch("/hypothesis/{hypothesis_id}/notes", dependencies=[Depends(require_api_key)])
+async def update_notes(hypothesis_id: str, notes: str):
+    """Attach free-text scientist notes to a hypothesis."""
+    hyp = scientist.update_hypothesis(hypothesis_id, {"scientist_notes": notes})
+    if hyp is None:
+        raise HTTPException(status_code=404, detail="Hypothesis not found")
+    return {
+        "id": hyp.id,
+        "title": hyp.title,
+        "scientist_notes": hyp.scientist_notes,
+    }
+
+
+@app.post("/workflow/writing", dependencies=[Depends(require_api_key)])
 async def run_writing():
     manuscript = await scientist.run_writing_cycle()
     return asdict(manuscript)
@@ -266,25 +313,51 @@ async def run_writing():
 # File Upload
 # --------------------------------------------------------------------------
 
-@app.post("/upload/csv")
+@app.post("/upload/csv", dependencies=[Depends(require_api_key)])
 async def upload_csv(file: UploadFile = File(...)):
-    """Uploads a CSV for analysis phase."""
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
-    with open(file_path, "wb") as f:
+    """Upload a CSV/TSV dataset for the analysis phase.
+
+    Filename is stripped to its basename and validated against an
+    extension allowlist; the resolved path is enforced to lie inside
+    UPLOAD_DIR. Both defences combined prevent path-traversal attacks
+    (``../../etc/passwd``) and arbitrary file overwrites.
+    """
+    try:
+        safe_name = sanitise_filename(
+            file.filename or "", ALLOWED_DATASET_EXTENSIONS,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        target = safe_path_within(os.path.join(UPLOAD_DIR, safe_name), UPLOAD_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    with open(target, "wb") as f:
         f.write(await file.read())
-    return {"filename": file.filename, "path": os.path.abspath(file_path)}
+    return {"filename": safe_name, "path": str(target)}
 
 
 # --------------------------------------------------------------------------
 # Session Persistence
 # --------------------------------------------------------------------------
 
-@app.post("/session/save")
+@app.post("/session/save", dependencies=[Depends(require_api_key)])
 async def save_session(name: str = "default"):
-    """Save current session state to disk."""
-    os.makedirs(SESSIONS_DIR, exist_ok=True)
-    path = os.path.join(SESSIONS_DIR, f"{name}.json")
+    """Save current session state to disk.
+
+    The session ``name`` is sanitised to a single safe filename so
+    that ``name=../../etc/passwd`` cannot escape SESSIONS_DIR.
+    """
+    try:
+        safe_name = sanitise_filename(f"{name}.json", (".json",))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        path = safe_path_within(os.path.join(SESSIONS_DIR, safe_name), SESSIONS_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         data = {
             "research_goal": asdict(scientist.context_memory.research_goal),
@@ -303,7 +376,7 @@ async def save_session(name: str = "default"):
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@app.get("/session/list")
+@app.get("/session/list", dependencies=[Depends(require_api_key)])
 async def list_sessions():
     """List all saved sessions."""
     os.makedirs(SESSIONS_DIR, exist_ok=True)
@@ -324,11 +397,20 @@ async def list_sessions():
     return sessions
 
 
-@app.get("/session/export")
+@app.get("/session/export", dependencies=[Depends(require_api_key)])
 async def export_json():
-    """Export all hypotheses as JSON."""
-    scientist.export_hypotheses_json("export.json")
-    with open("export.json") as f:
+    """Export all hypotheses as JSON.
+
+    Writes a fixed-name file inside SESSIONS_DIR (not the process CWD),
+    then reads it back. Both paths are inside the configured root so
+    nothing escapes.
+    """
+    os.makedirs(SESSIONS_DIR, exist_ok=True)
+    export_path = safe_path_within(
+        os.path.join(SESSIONS_DIR, "export.json"), SESSIONS_DIR,
+    )
+    scientist.export_hypotheses_json(str(export_path))
+    with open(export_path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -337,4 +419,8 @@ async def export_json():
 # --------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    # Default to loopback only; flip API_HOST=0.0.0.0 in env to expose
+    # externally (alongside API_KEYS to enforce authentication).
+    host = os.environ.get("API_HOST", "127.0.0.1")
+    port = int(os.environ.get("API_PORT", "8000"))
+    uvicorn.run(app, host=host, port=port, reload=True)

@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import logging
 import re
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,46 @@ from pathlib import Path
 import config
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Anti-SSRF allowlist for paper downloads
+# ---------------------------------------------------------------------------
+
+# Hosts we are willing to fetch PDFs from. The literature search layer can
+# legitimately only return ArXiv URLs through this code path; PubMed goes
+# through Entrez, not urlretrieve. Anything else is a red flag (LLM-
+# induced URL or upstream metadata poisoning) and must be refused before
+# urlretrieve sees it — otherwise an attacker can pivot to
+# file:///etc/passwd, http://169.254.169.254/... (cloud metadata), etc.
+_PDF_DOWNLOAD_ALLOWED_HOSTS: frozenset[str] = frozenset({
+    "arxiv.org",
+    "www.arxiv.org",
+    "export.arxiv.org",
+})
+_PDF_DOWNLOAD_ALLOWED_SCHEMES: frozenset[str] = frozenset({"https"})
+
+
+def _is_pdf_url_safe(url: str) -> bool:
+    """Return True iff *url* is fetchable for a PDF.
+
+    Enforces (a) HTTPS only, (b) host in the explicit allowlist, and
+    (c) no embedded credentials or path traversal indicators.
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:  # noqa: BLE001 — defensive
+        return False
+
+    if parsed.scheme.lower() not in _PDF_DOWNLOAD_ALLOWED_SCHEMES:
+        return False
+    host = (parsed.hostname or "").lower()
+    if host not in _PDF_DOWNLOAD_ALLOWED_HOSTS:
+        return False
+    # No userinfo (https://attacker@arxiv.org/...)
+    if parsed.username or parsed.password:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +251,25 @@ class PDFDownloader:
                     pdf_url = pdf_url.replace("/abs/", "/pdf/")
                 if not pdf_url.endswith(".pdf") and "arxiv.org" in pdf_url:
                     pdf_url += ".pdf"
+
+            # Force http→https for arXiv (the literature layer may still
+            # feed us legacy http:// URLs; the allowlist below requires
+            # https). This is safe because arxiv.org redirects http→https
+            # anyway.
+            if pdf_url.startswith("http://") and "arxiv.org" in pdf_url:
+                pdf_url = "https://" + pdf_url[len("http://"):]
+
+            # Anti-SSRF: refuse anything not on the explicit allowlist
+            # *before* it reaches urlretrieve. Without this, a malicious
+            # URL (e.g. file:///etc/passwd or
+            # http://169.254.169.254/latest/meta-data/) would be fetched.
+            if not _is_pdf_url_safe(pdf_url):
+                logger.warning(
+                    "Refusing to download from unsafe URL: %s "
+                    "(scheme/host not in allowlist).",
+                    pdf_url,
+                )
+                return None
 
             cache_path = self._get_cache_path(pdf_url)
 

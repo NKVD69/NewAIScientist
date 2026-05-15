@@ -198,6 +198,10 @@ class Hypothesis:
     # Falsifiability score (0..1), filled by FalsifiabilityAgent
     falsifiability_score: float = 0.0
 
+    # Free-text annotations from the scientist using the system (set via the
+    # PATCH /hypothesis/{id}/notes endpoint; not interpreted by the agents).
+    scientist_notes: str = ""
+
 
 @dataclass
 class UserFeedback:

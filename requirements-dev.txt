@@ -3,6 +3,8 @@
 # Test runner
 pytest==8.3.3
 pytest-asyncio==0.24.0
+# FastAPI TestClient (used by tests/test_api_security.py) needs httpx.
+httpx==0.27.2
 
 # Lint / format / type-check
 ruff==0.7.1
