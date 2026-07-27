@@ -883,6 +883,30 @@ class RAGEngine:
         existing = self.collection.get(where={"paper_id": paper_id}, limit=1)
         return bool(existing and existing["ids"])
 
+    def close(self) -> None:
+        """Release the ChromaDB PersistentClient and its underlying SQLite database.
+
+        On Windows the SQLite WAL file stays locked while the Chroma
+        system is alive, which prevents ``shutil.rmtree`` (or
+        ``tempfile.TemporaryDirectory`` cleanup) from deleting the
+        persist directory.  Calling this method stops the internal
+        system and resets all references so the directory can be
+        safely removed.
+        """
+        if self.chroma_client is not None:
+            try:
+                # ChromaDB's PersistentClient wraps a `System` object
+                # that manages the SQLite connection pool.
+                system = getattr(self.chroma_client, "_system", None)
+                if system is not None and hasattr(system, "stop"):
+                    system.stop()
+                    logger.info("ChromaDB system stopped — file locks released.")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Error stopping ChromaDB system: %s", exc)
+            finally:
+                self.chroma_client = None
+                self.collection = None
+
     def get_stats(self) -> dict:
         """Get RAG system statistics"""
         if not self.collection:

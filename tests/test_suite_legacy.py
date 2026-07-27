@@ -28,6 +28,11 @@ from co_scientist import (
 )
 from rag_system import DocumentChunk, DocumentProcessor, PDFDownloader, RAGEngine, SemanticChunker
 
+try:
+    import chromadb
+except ImportError:
+    chromadb = None
+
 # =============================================================================
 # UNIT TESTS
 # =============================================================================
@@ -418,6 +423,9 @@ class TestRAGSystem:
                 assert stats["status"] == "unavailable", "Should report unavailable without deps"
                 print("  ✓ RAGEngine reports unavailable (missing deps, expected)")
 
+            # Release ChromaDB file locks before temp dir cleanup (Windows)
+            engine.close()
+
         return True
 
     @staticmethod
@@ -435,6 +443,9 @@ class TestRAGSystem:
             assert len(results) == 0, "Empty collection should return no results"
 
             print("  ✓ Empty query returns empty list")
+
+            # Release ChromaDB file locks before temp dir cleanup (Windows)
+            engine.close()
 
         return True
 
@@ -455,6 +466,7 @@ class TestRAGSystem:
             # Load embedding model if not loaded
             if engine.embedding_model is None:
                 print("  ⚠ Skipping RAG duplicate test (embedding model missing)")
+                engine.close()
                 return True
 
             paper = {
@@ -481,6 +493,9 @@ class TestRAGSystem:
                 assert indexed2 == 0, "Should skip paper on second run"
                 count2 = engine.collection.count()
                 assert count1 == count2, "Count should not increase on second run"
+
+            # Release ChromaDB file locks before temp dir cleanup (Windows)
+            engine.close()
 
         print("  ✓ RAGEngine correctly skips already indexed papers")
         return True
