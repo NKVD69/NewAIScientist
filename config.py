@@ -68,14 +68,26 @@ def get_ncbi_api_key() -> str:
 def get_openai_client():
     """Return a pre-configured OpenAI client."""
     try:
+        import httpx
         import openai
-        return openai.OpenAI(
-            base_url=get_llm_base_url(),
-            api_key=get_llm_api_key()
-        )
+
+        try:
+            http_client = httpx.Client()
+        except Exception:
+            http_client = None
+
+        kwargs = {
+            "base_url": get_llm_base_url(),
+            "api_key": get_llm_api_key(),
+        }
+        if http_client is not None:
+            kwargs["http_client"] = http_client
+
+        return openai.OpenAI(**kwargs)
     except ImportError:
         logger.error("openai package not installed")
         return None
+
 
 
 # =============================================================================

@@ -205,21 +205,41 @@ with st.sidebar:
                                      key="persist_llm_model_name",
                                      on_change=lambda: save_config({"llm_model_name": st.session_state.persist_llm_model_name}))
 
+        llm_api_key = st.text_input("Clé API LLM (LM Studio / API Key)",
+                                  type="password",
+                                  value=config.get("llm_api_key", "lm-studio"),
+                                  key="persist_llm_api_key",
+                                  help="Entrez votre clé API LM Studio (ou 'lm-studio' / 'not-needed' selon la config LM Studio)",
+                                  on_change=lambda: save_config({"llm_api_key": st.session_state.persist_llm_api_key}))
+
         # Mise à jour des variables d'environnement pour le backend
         os.environ["OPENAI_API_BASE"] = llm_base_url
-        os.environ["OPENAI_API_KEY"] = "lm-studio"  # Dummy key for local
+        os.environ["OPENAI_API_KEY"] = llm_api_key if llm_api_key else "lm-studio"
         os.environ["OPENAI_MODEL_NAME"] = llm_model_name
 
         # BOUTON DE TEST DE CONNEXION
         if st.button("📡 Tester la connexion"):
             try:
+                import httpx
                 import openai
-                client = openai.OpenAI(base_url=llm_base_url, api_key="lm-studio")
+
+                try:
+                    http_client = httpx.Client()
+                except Exception:
+                    http_client = None
+
+                kwargs = {"base_url": llm_base_url, "api_key": llm_api_key if llm_api_key else "lm-studio"}
+                if http_client is not None:
+                    kwargs["http_client"] = http_client
+
+                client = openai.OpenAI(**kwargs)
                 with st.spinner("Ping du serveur..."):
                     models = client.models.list()
                     st.success("Connexion réussie ! Serveur actif.")
             except Exception as e:
                 st.error(f"Échec de connexion : {e}")
+
+
     else:
         st.warning("Mode Simulation activé")
 
