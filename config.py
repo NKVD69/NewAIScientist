@@ -36,8 +36,18 @@ def get_llm_base_url() -> str:
 
 
 def get_llm_model_name() -> str:
-    """Get the LLM model name from environment."""
+    """Get the default LLM model name from environment."""
     return os.environ.get("OPENAI_MODEL_NAME", DEFAULT_LLM_MODEL_NAME)
+
+
+def get_llm_model_name_for_role(role: str) -> str:
+    """Get specialized LLM model name for a specific agent role (e.g. 'rag', 'reasoning', 'code')."""
+    role_env_map = {
+        "rag": os.environ.get("MODEL_RAG") or os.environ.get("OPENAI_MODEL_RAG"),
+        "reasoning": os.environ.get("MODEL_REASONING") or os.environ.get("OPENAI_MODEL_REASONING"),
+        "code": os.environ.get("MODEL_CODE") or os.environ.get("OPENAI_MODEL_CODE"),
+    }
+    return role_env_map.get(role.lower()) or get_llm_model_name()
 
 
 def get_llm_api_key() -> str:

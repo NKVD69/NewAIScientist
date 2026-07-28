@@ -19,6 +19,7 @@ import os
 import random
 from dataclasses import asdict
 from typing import Any
+from utils.convergence import ConvergenceTracker
 
 # Re-exported for legacy callers (e.g. scripts/generate_paper.py).
 import config  # noqa: F401
@@ -37,6 +38,8 @@ from agents import (
     ScopingAgent,
     SupervisorAgent,
     WritingAgent,
+    PreregistrationAgent,
+    ReplicationAgent,
 )
 from models import (
     AnalysisPlan,
@@ -96,6 +99,8 @@ class CoScientist:
         self.protocol_agent = ProtocolAgent(use_local_llm=use_local_llm)
         self.analysis_agent = AnalysisAgent(use_local_llm=use_local_llm)
         self.writing_agent = WritingAgent(use_local_llm=use_local_llm)
+        self.preregistration_agent = PreregistrationAgent(use_local_llm=use_local_llm)
+        self.replication_agent = ReplicationAgent(use_local_llm=use_local_llm)
 
         # Register all agents with supervisor
         for agent in [
@@ -103,7 +108,7 @@ class CoScientist:
             self.proximity_agent, self.evolution_agent, self.meta_review_agent,
             self.literature_agent, self.graph_agent, self.experiment_agent,
             self.scoping_agent, self.protocol_agent, self.analysis_agent,
-            self.writing_agent, self,
+            self.writing_agent, self.preregistration_agent, self.replication_agent, self,
         ]:
             self.supervisor.register_agent(agent)
 
@@ -357,6 +362,55 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
             results.append(result)
         return results
 
+    async def run_preregistration_cycle(self) -> list[Any]:
+        """Formalize free-text predictions for all generated/evolved hypotheses."""
+        print("\n📋 [Preregistration Phase] Formalizing predictions...")
+        results = []
+        for hyp in self.context_memory.hypotheses.values():
+            if not hyp.falsifiable_predictions:
+                predictions = await self.preregistration_agent.formalize_predictions(
+                    hyp, self.context_memory.research_goal
+                )
+                results.append(predictions)
+        return results
+
+    async def run_replication_cycle(self) -> list[dict]:
+        """Replicate experiments to assess reproducibility for top hypotheses."""
+        print("\n🧬 [Replication Phase] Verifying reproducibility of top hypotheses...")
+        top_hyps = sorted(
+            self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True
+        )[:2]
+        results = []
+        for hyp in top_hyps:
+            result = await self.replication_agent.replicate_experiment(
+                hyp, self.context_memory.research_goal
+            )
+            results.append(result)
+        return results
+
+    async def run_revision_cycle(self) -> list[Hypothesis]:
+        """Auto-revise hypotheses based on experiment and replication findings."""
+        print("\n🔄 [Revision Phase] Revising hypotheses in light of empirical evidence...")
+        revised = []
+        for hyp in list(self.context_memory.hypotheses.values()):
+            if not hyp.experimental_results:
+                continue
+            
+            refuted = False
+            lower_results = hyp.experimental_results.lower()
+            if "fail" in lower_results or "not support" in lower_results or "refute" in lower_results or "reject" in lower_results:
+                refuted = True
+            
+            if refuted:
+                print(f"  ⚠ Hypothesis '{hyp.title}' has refuted/failed predictions. Triggering revision...")
+                new_hyp = await self.evolution_agent.evolve_hypothesis(
+                    hyp, strategy="experimental_revision"
+                )
+                self.context_memory.hypotheses[new_hyp.id] = new_hyp
+                revised.append(new_hyp)
+        print(f"✓ Revised {len(revised)} hypotheses")
+        return revised
+
     # ------------------------------------------------------------------
     # PHASE 3.5: INTERACTIVE FEEDBACK LOOP
     # ------------------------------------------------------------------
@@ -546,30 +600,72 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     async def run_full_cycle(self, num_iterations: int = 3):
         """Run complete co-scientist workflow (v3.0 Extended) using the task queue."""
         print("\n" + "=" * 70)
-        print("🤖 NewAI Scientist v3.0 WORKFLOW STARTED (DAG Orchestration)")
+        print("🤖 NewAI Scientist v3.0 WORKFLOW STARTED (Convergence & Closed-Loop)")
         print("=" * 70)
 
-        # Queue initial phases
+        # Initialize convergence tracker
+        tracker = ConvergenceTracker(max_iterations=num_iterations)
+
+        # 1. INITIAL PHASES: Literature Search & Scoping
         self.supervisor.queue_task("Orchestrator", "run_literature_search", {}, priority=1)
         self.supervisor.queue_task("Orchestrator", "run_scoping_cycle", {}, priority=2)
         self.supervisor.queue_task("Orchestrator", "run_hypothesis_generation_cycle", {"num_hypotheses": 5}, priority=3)
+        self.supervisor.queue_task("Orchestrator", "run_preregistration_cycle", {}, priority=4)
+        
+        print("\n🚀 Executing Initial Phases...")
+        await self.supervisor.execute_task_queue(max_iterations=10)
 
-        for iteration in range(num_iterations):
+        # 2. EVOLUTION & REFLECTION ITERATIONS (Convergence-controlled)
+        for iteration in range(1, num_iterations + 1):
+            print(f"\n🔄 Running Iteration {iteration}/{num_iterations}...")
             base_prio = 10 + (iteration * 10)
+            
+            # Queue iteration tasks
             self.supervisor.queue_task("Orchestrator", "run_review_cycle", {}, priority=base_prio + 1)
             self.supervisor.queue_task("Orchestrator", "run_proximity_cycle", {}, priority=base_prio + 2)
             self.supervisor.queue_task("Orchestrator", "run_tournament_cycle", {"num_matches": 4}, priority=base_prio + 3)
             self.supervisor.queue_task("Orchestrator", "run_evolution_cycle", {}, priority=base_prio + 4)
-            self.supervisor.queue_task("Orchestrator", "run_meta_review_and_status", {"iteration": iteration + 1}, priority=base_prio + 5)
+            self.supervisor.queue_task("Orchestrator", "run_preregistration_cycle", {}, priority=base_prio + 5)
+            self.supervisor.queue_task("Orchestrator", "run_meta_review_and_status", {"iteration": iteration}, priority=base_prio + 6)
+            
+            # Execute current iteration
+            await self.supervisor.execute_task_queue(max_iterations=20)
 
-        # Queue final phases
+            # Update convergence tracker
+            report = tracker.update(
+                self.context_memory.hypotheses,
+                self.context_memory.tournament_history,
+                iteration
+            )
+
+            # Check for convergence
+            if tracker.should_stop(iteration):
+                print(f"\n✨ System has converged at iteration {iteration}. Reasons:")
+                for r in report.reasons:
+                    print(f"  • {r}")
+                break
+
+        # 3. EXPERIMENTAL VALIDATION & CLOSED-LOOP REVISION
+        print("\n🧪 Executing Empirical Validation & Closed-loop Revision...")
+        self.supervisor.queue_task("Orchestrator", "run_experiment_cycle", {}, priority=100)
+        self.supervisor.queue_task("Orchestrator", "run_replication_cycle", {}, priority=101)
+        self.supervisor.queue_task("Orchestrator", "run_revision_cycle", {}, priority=102)
+        
+        # After revision, run reviews and pre-register any new hypotheses
+        self.supervisor.queue_task("Orchestrator", "run_review_cycle", {}, priority=103)
+        self.supervisor.queue_task("Orchestrator", "run_preregistration_cycle", {}, priority=104)
+        
+        await self.supervisor.execute_task_queue(max_iterations=10)
+
+        # 4. FINAL PROTOCOL & MANUSCRIPT WRITING
+        print("\n📝 Compiling final protocol design and scientific manuscript...")
         final_prio = 1000
         self.supervisor.queue_task("Orchestrator", "run_protocol_cycle", {}, priority=final_prio)
         self.supervisor.queue_task("Orchestrator", "run_writing_cycle", {}, priority=final_prio + 1)
         self.supervisor.queue_task("Orchestrator", "_print_final_summary", {}, priority=final_prio + 2)
 
-        # Execute the queued tasks via SupervisorAgent
-        await self.supervisor.execute_task_queue(max_iterations=100)
+        # Final execute
+        await self.supervisor.execute_task_queue(max_iterations=10)
 
     # ------------------------------------------------------------------
     # STATUS & EXPORT

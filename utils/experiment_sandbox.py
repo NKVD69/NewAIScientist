@@ -126,10 +126,10 @@ def extract_entities(text: str) -> dict[str, list[str]]:
     The result is keyed by scheme; values are deduplicated and sorted.
     """
     if not text:
-        return {"uniprot": [], "pubchem": [], "genes": [], "drugs": []}
+        return {"uniprot": [], "pubchem": []}
     uniprot = sorted({m.group(1) for m in _UNIPROT_RE.finditer(text)})
     pubchem = sorted({m.group(1) for m in _PUBCHEM_RE.finditer(text)})
-    return {"uniprot": uniprot, "pubchem": pubchem, "genes": [], "drugs": []}
+    return {"uniprot": uniprot, "pubchem": pubchem}
 
 
 async def extract_entities_with_llm(
@@ -144,6 +144,8 @@ async def extract_entities_with_llm(
     """
     # Start with regex-based extraction
     base = extract_entities(text)
+    base["genes"] = []
+    base["drugs"] = []
 
     if llm_client is None:
         return base

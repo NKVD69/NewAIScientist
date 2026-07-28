@@ -224,6 +224,12 @@ class LiteratureAgent(BaseAgent):
                         papers = await self._search_arxiv(q, max_results)
                     elif source == "pubmed":
                         papers = await self._search_pubmed(q, max_results)
+                    elif source in ["biorxiv", "medrxiv"]:
+                        papers = await self._search_biorxiv(q, max_results)
+                    elif source == "openalex":
+                        papers = await self._search_openalex(q, max_results)
+                    elif source == "europepmc":
+                        papers = await self._search_europepmc(q, max_results)
                     else:
                         papers = []
 
@@ -497,5 +503,94 @@ class LiteratureAgent(BaseAgent):
             logger.warning("Reranking failed: %s. Falling back to default ordering.", e)
             return chunks[:top_k]
 
+    async def _search_biorxiv(self, query: str, max_results: int) -> list[dict]:
+        """Search BioRxiv/MedRxiv preprints via Europe PMC API filter."""
+        epmc_query = f"{query} SRC:PPR"
+        return await self._search_europepmc(epmc_query, max_results, source_label="BioRxiv/MedRxiv")
+
+    async def _search_openalex(self, query: str, max_results: int) -> list[dict]:
+        """Search OpenAlex REST API for works."""
+        import json
+        import urllib.parse
+        import urllib.request
+
+        encoded_q = urllib.parse.quote(query)
+        url = f"https://api.openalex.org/works?search={encoded_q}&per_page={max_results}"
+        req = urllib.request.Request(url, headers={"User-Agent": "AI-CoScientist/3.1 (mailto:ai-scientist@example.com)"})
+
+        def fetch():
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    if resp.status != 200:
+                        return []
+                    data = json.loads(resp.read().decode("utf-8"))
+                    results = []
+                    for item in data.get("results", []):
+                        title = item.get("display_name") or item.get("title") or "Untitled"
+                        pub_date = item.get("publication_date") or "Unknown"
+                        authors = [a.get("author", {}).get("display_name") for a in item.get("authorships", []) if a.get("author")]
+                        landing_url = item.get("doi") or (item.get("primary_location") or {}).get("landing_page_url") or f"https://openalex.org/{item.get('id')}"
+                        results.append({
+                            "title": title,
+                            "summary": f"Publication date: {pub_date}. Citations: {item.get('cited_by_count', 0)}.",
+                            "authors": authors[:5],
+                            "published": pub_date,
+                            "url": landing_url,
+                            "source": "OpenAlex",
+                        })
+                    return results
+            except Exception as e:
+                logger.warning("OpenAlex search error: %s", e)
+                return []
+
+        results = await asyncio.to_thread(fetch)
+        self.papers_retrieved += len(results)
+        logger.info("Found %d papers on OpenAlex.", len(results))
+        return results
+
+    async def _search_europepmc(self, query: str, max_results: int, source_label: str = "EuropePMC") -> list[dict]:
+        """Search Europe PMC REST API."""
+        import json
+        import urllib.parse
+        import urllib.request
+
+        encoded_q = urllib.parse.quote(query)
+        url = f"https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={encoded_q}&format=json&pageSize={max_results}"
+        req = urllib.request.Request(url, headers={"User-Agent": "AI-CoScientist/3.1"})
+
+        def fetch():
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    if resp.status != 200:
+                        return []
+                    data = json.loads(resp.read().decode("utf-8"))
+                    results = []
+                    for item in data.get("resultList", {}).get("result", []):
+                        title = item.get("title", "Untitled").rstrip(".")
+                        abstract = item.get("abstractText") or "No abstract available."
+                        authors_str = item.get("authorString", "")
+                        authors = [a.strip() for a in authors_str.split(",") if a.strip()]
+                        pub_date = item.get("firstPublicationDate") or item.get("pubYear") or "Unknown"
+                        doi = item.get("doi")
+                        paper_url = f"https://doi.org/{doi}" if doi else f"https://europepmc.org/article/{item.get('source', 'MED')}/{item.get('id', '')}"
+                        results.append({
+                            "title": title,
+                            "summary": abstract,
+                            "authors": authors[:5],
+                            "published": str(pub_date),
+                            "url": paper_url,
+                            "source": source_label,
+                        })
+                    return results
+            except Exception as e:
+                logger.warning("Europe PMC search error: %s", e)
+                return []
+
+        results = await asyncio.to_thread(fetch)
+        self.papers_retrieved += len(results)
+        logger.info("Found %d papers on %s.", len(results), source_label)
+        return results
+
 
 __all__ = ["LiteratureAgent"]
+

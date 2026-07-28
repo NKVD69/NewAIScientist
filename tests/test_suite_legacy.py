@@ -453,6 +453,7 @@ class TestRAGSystem:
     async def test_rag_engine_skip_duplicates():
         """Test that RAGEngine skips already indexed papers"""
         print("\n🧪 Testing RAGEngine Duplicate Skipping...")
+        from pathlib import Path
 
         # This test requires chroma to be functional
         if not chromadb:
@@ -477,7 +478,6 @@ class TestRAGSystem:
             }
 
             # Mock download and extraction to avoid network calls
-            from pathlib import Path
             from unittest.mock import patch
 
             with patch.object(PDFDownloader, 'download_paper', return_value=Path("dummy.pdf")), \

@@ -23,6 +23,7 @@ _llm_state: dict = {
     "total_calls": 0,
     "total_retries": 0,
     "last_model": None,
+    "role_tokens": {},
 }
 
 
@@ -130,17 +131,27 @@ async def get_llm_completion(
     max_retries: int = DEFAULT_MAX_RETRIES,
     base_delay: float = DEFAULT_BASE_DELAY,
     max_delay: float = DEFAULT_MAX_DELAY,
+    agent_role: str | None = None,
+    model_override: str | None = None,
 ) -> Any:
     """
     Robust wrapper for LLM completions with:
+    - Task-specialized model routing (via agent_role or model_override)
     - Automatic JSON mode negotiation (disables if model doesn't support it)
     - Model-change detection to reset json_mode flag
-    - Token usage tracking
-    - Exponential backoff with jitter on transient failures (network,
-      timeouts, 429/5xx). Permanent errors (auth, bad request) fail fast.
+    - Token usage tracking with per-role breakdown
+    - Exponential backoff with jitter on transient failures
     """
     global _llm_state
-    model_name = cfg.get_llm_model_name()
+
+    if model_override:
+        model_name = model_override
+    elif agent_role and hasattr(cfg, "get_llm_model_name_for_role"):
+        model_name = cfg.get_llm_model_name_for_role(agent_role)
+    else:
+        model_name = cfg.get_llm_model_name()
+
+    role_key = (agent_role or "default").lower()
 
     # Reset json_mode flag when the user switches models
     if _llm_state["last_model"] is not None and _llm_state["last_model"] != model_name:
@@ -163,12 +174,17 @@ async def get_llm_completion(
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 
+    def _record_tokens(resp):
+        if hasattr(resp, "usage") and resp.usage:
+            toks = getattr(resp.usage, "total_tokens", 0) or 0
+            _llm_state["total_tokens"] += toks
+            _llm_state["role_tokens"][role_key] = _llm_state["role_tokens"].get(role_key, 0) + toks
+
     try:
         response = await _call_with_retry(
             client, kwargs, max_retries, base_delay, max_delay,
         )
-        if hasattr(response, "usage") and response.usage:
-            _llm_state["total_tokens"] += getattr(response.usage, "total_tokens", 0) or 0
+        _record_tokens(response)
         _llm_state["total_calls"] += 1
         return response
 
@@ -185,11 +201,11 @@ async def get_llm_completion(
             response = await _call_with_retry(
                 client, kwargs, max_retries, base_delay, max_delay,
             )
-            if hasattr(response, "usage") and response.usage:
-                _llm_state["total_tokens"] += getattr(response.usage, "total_tokens", 0) or 0
+            _record_tokens(response)
             _llm_state["total_calls"] += 1
             return response
         raise
+
 
 
 def parse_json_response(content: str) -> Any:

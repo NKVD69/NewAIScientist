@@ -195,8 +195,13 @@ class Hypothesis:
     claims: list["Claim"] = field(default_factory=list)
     # Falsifiable, pre-registered predictions (improvement #3)
     falsifiable_predictions: list["Prediction"] = field(default_factory=list)
-    # Falsifiability score (0..1), filled by FalsifiabilityAgent
+    # Falsifiability score (0..1), filled by FalsifiabilityAgent/PreregistrationAgent
     falsifiability_score: float = 0.0
+    prediction_hash: str = ""
+
+    # Replication & Reproducibility metrics
+    reproducibility_score: float = 0.0
+    replication_results: list[dict] = field(default_factory=list)
 
     # Free-text annotations from the scientist using the system (set via the
     # PATCH /hypothesis/{id}/notes endpoint; not interpreted by the agents).

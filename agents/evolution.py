@@ -51,6 +51,9 @@ class EvolutionAgent(BaseAgent):
             new_hyp = await self._simplify(new_hyp, hypothesis)
         elif strategy == "out_of_box":
             new_hyp = await self._divergent_thinking(new_hyp, hypothesis)
+        elif strategy == "experimental_revision":
+            new_hyp.title = f"Revised: {hypothesis.title}"
+            new_hyp.generation_method = "experimental-revision"
 
         # Try LLM-based refinement if available
         if self.llm_client:
@@ -104,12 +107,21 @@ class EvolutionAgent(BaseAgent):
 
     async def _llm_refine_evolution(self, new_hyp: Hypothesis, original: Hypothesis, strategy: str) -> Hypothesis:
         """Use LLM to refine evolved hypothesis"""
+        experimental_results_text = ""
         if strategy == "out_of_box":
             system_prompt = "You are a visionary scientist specializing in 'lateral thinking'. Your task is to force a radical, cross-disciplinary jump."
             task_instruction = (
                 "Completely ignore the dominant paradigm of the Original Hypothesis. "
                 "Find a mechanism from a totally unrelated scientific field and boldly apply it to this problem."
             )
+        elif strategy == "experimental_revision":
+            system_prompt = "You are a rigorous scientist revising a hypothesis in light of empirical evidence."
+            task_instruction = (
+                "Review the original hypothesis and the empirical/experimental results. "
+                "Modify the hypothesis description, biochemical/physical mechanism, and predictions to reconcile "
+                "them with the experimental findings (especially addressing and adjusting any refuted predictions)."
+            )
+            experimental_results_text = f"\n- Experimental/Simulation Results: {original.experimental_results}\n"
         else:
             system_prompt = "You are a meticulous scientific research assistant."
             task_instruction = f"Improve the following hypothesis using the '{strategy}' strategy. Ground it in realistic pathways."
@@ -122,6 +134,7 @@ Original Hypothesis:
 - Title: {original.title}
 - Mechanism: {original.mechanism}
 - Description: {original.description}
+- Testable Predictions: {original.testable_predictions}{experimental_results_text}
 
 Current Evolution Draft:
 - Title: {new_hyp.title}
@@ -144,7 +157,10 @@ Provide an improved version as a JSON object with keys: "title", "description", 
             new_hyp.mechanism = ensure_str(data.get("mechanism", new_hyp.mechanism))
             new_hyp.testable_predictions = data.get("testable_predictions", new_hyp.testable_predictions)
             new_hyp.limitations = data.get("limitations", new_hyp.limitations)
-            new_hyp.generation_method = "evolved-llm"
+            if strategy == "experimental_revision":
+                new_hyp.generation_method = "experimental-revision"
+            else:
+                new_hyp.generation_method = "evolved-llm"
         except Exception as e:
             logger.warning("LLM evolution refinement failed: %s", e)
 

@@ -388,7 +388,7 @@ with st.expander("🎯 Définir l'Objectif de Recherche", expanded=not st.sessio
                                height=100,
                                key="persist_goal_desc")
 
-        all_sources = ["arxiv", "pubmed", "biorxiv", "ieee_xplore", "scopus", "google_scholar", "semantic_scholar"]
+        all_sources = ["arxiv", "pubmed", "biorxiv", "openalex", "europepmc", "ieee_xplore", "scopus", "google_scholar", "semantic_scholar"]
         selected_sources = st.multiselect("Bases de données pertinentes",
                                         options=all_sources,
                                         key="persist_sources",
@@ -736,6 +736,19 @@ if st.session_state.results:
         )
 
         st.divider()
+        st.subheader("📓 Export Notebook Jupyter Reproductible")
+        st.markdown("Générez un Notebook Jupyter `.ipynb` prêt à exécuter contenant le protocole expérimental et le code de validation.")
+        if st.button("🛠️ Générer Notebook Jupyter"):
+            try:
+                from utils.notebook_exporter import generate_reproducible_notebook
+                nb_path = generate_reproducible_notebook(cs, "experiment_protocol.ipynb")
+                with open(nb_path, "rb") as f:
+                    st.download_button("📥 Télécharger experiment_protocol.ipynb", f, file_name="experiment_protocol.ipynb", mime="application/x-ipynb+json")
+                st.success("✅ Notebook généré avec succès !")
+            except Exception as e:
+                st.error(f"Erreur de génération du notebook: {e}")
+
+        st.divider()
         st.subheader("📄 Génération de l'Article Scientifique (Phase 6)")
         st.markdown("Rédigez un article formel PDF incluant les hypothèses, les graphes de connaissances (GraphRAG) et les réflexions générées par l'IA.")
 
@@ -755,3 +768,4 @@ if st.session_state.results:
                         st.error(f"❌ Erreur de génération: {result.stderr}")
                 except Exception as e:
                     st.error(f"❌ Impossible de lancer la génération: {e}")
+

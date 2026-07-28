@@ -17,6 +17,8 @@ from .protocol import ProtocolAgent
 from .proximity import ProximityAgent
 from .ranking import RankingAgent
 from .reflection import ReflectionAgent
+from .preregistration import PreregistrationAgent
+from .replication import ReplicationAgent
 
 # v3.0 New Agents
 from .scoping import ScopingAgent
@@ -30,6 +32,8 @@ __all__ = [
     "LiteratureAgent",
     "GenerationAgent",
     "ReflectionAgent",
+    "PreregistrationAgent",
+    "ReplicationAgent",
     "RankingAgent",
     "ProximityAgent",
     "EvolutionAgent",

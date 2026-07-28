@@ -67,6 +67,35 @@ Return ONLY the text content of the section."""
             logger.error(f"Drafting {section_type} failed: {e}")
             return ManuscriptSection(section_type=section_type, content=f"Error: {e}")
 
+    async def generate_mechanism_mermaid(self, hypothesis: Hypothesis) -> str:
+        """Generates a Mermaid.js flowchart representing the hypothesis mechanism pathway."""
+        if not self.llm_client or not hypothesis:
+            return "graph TD\n  A[Target Hypothesis] --> B[Mechanism Pathway]\n"
+
+        prompt = f"""
+        Create a clean Mermaid.js flowchart diagram for this scientific hypothesis mechanism:
+        Title: {hypothesis.title}
+        Mechanism: {hypothesis.mechanism}
+
+        Return ONLY valid Mermaid code starting with `graph TD` inside ```mermaid ... ``` fences.
+        """
+        try:
+            response = await get_llm_completion(
+                self.llm_client,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                json_mode=False,
+            )
+            content = response.choices[0].message.content.strip()
+            if "```mermaid" in content:
+                content = content.split("```mermaid")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            return content
+        except Exception as e:
+            logger.warning("Mermaid diagram generation failed: %s", e)
+            return "graph TD\n  A[Target Hypothesis] --> B[Mechanism Pathway]\n"
+
     async def compile_manuscript(
         self,
         goal: Any,
@@ -80,6 +109,7 @@ Return ONLY the text content of the section."""
             references=references
         )
         return manuscript
+
 
     # ------------------------------------------------------------------
     # EXPORTS
