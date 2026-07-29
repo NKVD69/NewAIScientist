@@ -23,6 +23,8 @@ from utils.llm import get_llm_completion, parse_json_response
 
 from .base import BaseAgent
 
+from utils.literature_hygiene import apply_hygiene, screen_corpus
+
 logger = logging.getLogger(__name__)
 
 # Optional imports
@@ -51,12 +53,27 @@ class LiteratureAgent(BaseAgent):
 
     name = "Literature"
 
-    def __init__(self, use_local_llm: bool = True, enable_rag: bool = True):
+    def __init__(
+        self,
+        use_local_llm: bool = True,
+        enable_rag: bool = True,
+        screen_retractions: bool = True,
+        enrich_with_s2: bool = True,
+    ):
         super().__init__(use_local_llm=use_local_llm)
         self.papers_retrieved = 0
         self.rag_engine = None
         self.enable_rag = enable_rag
         self.use_local_llm = use_local_llm
+        #: Query Crossref/PubMed for retraction notices before indexing.
+        #: Grounding a biomedical hypothesis on a retracted paper is a serious
+        #: and entirely avoidable failure mode; the data was always available
+        #: and simply never consulted.
+        self.screen_retractions = screen_retractions
+        self.retracted_excluded: list[dict] = []
+        #: Backfill citation counts and publication types from Semantic
+        #: Scholar after retrieval. One batched call for the whole corpus.
+        self.enrich_with_s2 = enrich_with_s2
 
         # Initialize RAG system if enabled
         if enable_rag and RAGEngine:
@@ -184,6 +201,23 @@ class LiteratureAgent(BaseAgent):
         )
         return {"new_papers": new_papers, "last_seen": last_seen}
 
+    async def _search_semantic_scholar(self, query: str, max_results: int) -> list[dict]:
+        """Search Semantic Scholar.
+
+        Unlike the PubMed adapter, this does not hard-code an open-access
+        filter. That filter biases the corpus toward particular publishers,
+        and it should be a reversible choice rather than an invisible
+        constraint baked into every query.
+        """
+        try:
+            from utils.semantic_scholar import get_client
+            papers = await get_client().search(query, limit=max_results * 2)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Semantic Scholar search failed: %s", exc)
+            return []
+        logger.info("  Semantic Scholar: %d results for '%s'", len(papers), query[:50])
+        return [p.to_paper_dict() for p in papers]
+
     async def search_literature(self, goal: ResearchGoal, max_results: int = 5, sources: list[str] = None, iterations: int = 2) -> list[dict]:
         """
         Search for relevant papers using specified source APIs with iterative refinement.
@@ -224,6 +258,8 @@ class LiteratureAgent(BaseAgent):
                         papers = await self._search_arxiv(q, max_results)
                     elif source == "pubmed":
                         papers = await self._search_pubmed(q, max_results)
+                    elif source in ("semanticscholar", "s2"):
+                        papers = await self._search_semantic_scholar(q, max_results)
                     elif source in ["biorxiv", "medrxiv"]:
                         papers = await self._search_biorxiv(q, max_results)
                     elif source == "openalex":
@@ -257,7 +293,42 @@ class LiteratureAgent(BaseAgent):
             else:
                 break
 
-        return all_papers[:max_results * 2]
+        # --- Enrichment: citation counts and publication types from S2 ---
+        # literature_hygiene.quality_weight reads `citation_count`, which
+        # neither arXiv nor the PubMed E-utilities return. One batched S2 call
+        # fills it for the whole corpus, plus publication types (MetaAnalysis
+        # vs CaseReport) so the evidence hierarchy stops being flat.
+        if self.enrich_with_s2:
+            try:
+                from utils.semantic_scholar import get_client
+                all_papers = await get_client().enrich_papers(all_papers)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("S2 enrichment skipped (%s).", exc)
+
+        # --- Hygiene: deduplicate, screen retractions, weight by quality ---
+        # Previously: title-normalised dedup only (so a bioRxiv preprint and
+        # its published version both survived and mutually "corroborated"
+        # a hypothesis), no retraction check at all, and every paper weighted
+        # equally regardless of age or venue.
+        cleaned, dedup_report = apply_hygiene(all_papers)
+        if dedup_report.n_removed:
+            logger.info(dedup_report.render())
+
+        if self.screen_retractions:
+            try:
+                cleaned, excluded = await screen_corpus(cleaned)
+                if excluded:
+                    logger.warning(
+                        "Excluded %d retracted paper(s) from the corpus.", len(excluded),
+                    )
+                    self.retracted_excluded.extend(
+                        {"title": p.get("title", ""), "reason": st.reason}
+                        for p, st in excluded
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Retraction screening unavailable (%s) — continuing.", exc)
+
+        return cleaned[:max_results * 2]
 
     def get_rag_stats(self) -> dict:
         """Get statistics from the RAG engine if enabled."""
@@ -277,7 +348,7 @@ class LiteratureAgent(BaseAgent):
         if self.rag_engine and self.llm_client and goal:
             logger.info("Synthesizing semantic CAG report from vector chunks...")
             rag_query = f"{goal.title} {goal.description}"
-            chunks = await self.rag_engine.query(rag_query, top_k=8)
+            chunks = await self._retrieve(rag_query, 8)
 
             if chunks:
                 formatted_chunks = ""
@@ -447,13 +518,39 @@ class LiteratureAgent(BaseAgent):
         chunks_indexed = await self.rag_engine.process_papers(papers)
         return chunks_indexed
 
+    async def _retrieve(self, query: str, k: int) -> list[dict]:
+        """Retrieve chunks using the strongest retrieval path available.
+
+        ``RAGEngine.query_hybrid`` (BM25 + dense + RRF fusion + cross-encoder
+        rerank) was fully implemented and unit-tested but had no production
+        caller — every code path went through the dense-only ``query()``.
+        This is that caller. Falls back to dense on any failure, matching the
+        graceful-degradation pattern used throughout the codebase.
+        """
+        if not self.rag_engine:
+            return []
+
+        if getattr(self.rag_engine, "enable_hybrid", False) and hasattr(
+            self.rag_engine, "query_hybrid"
+        ):
+            try:
+                chunks = await self.rag_engine.query_hybrid(query, top_k=k)
+                if chunks:
+                    logger.info("Hybrid retrieval returned %d chunks (BM25+dense+RRF).", len(chunks))
+                    return chunks
+                logger.info("Hybrid retrieval returned nothing — falling back to dense.")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Hybrid retrieval failed (%s) — falling back to dense.", exc)
+
+        return await self.rag_engine.query(query, k)
+
     async def query_rag(self, query: str, top_k: int = 5) -> list[dict]:
         """Query RAG system for relevant paper chunks, with LLM Semantic Reranking"""
         if not self.rag_engine:
             return []
 
         initial_k = top_k * 3
-        chunks = await self.rag_engine.query(query, initial_k)
+        chunks = await self._retrieve(query, initial_k)
 
         if not chunks or not self.llm_client:
             return chunks[:top_k]

@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 import config as cfg
+from utils.budget import estimate_tokens, get_budget
 
 logger = logging.getLogger(__name__)
 
@@ -175,10 +176,39 @@ async def get_llm_completion(
         kwargs["response_format"] = {"type": "json_object"}
 
     def _record_tokens(resp):
+        prompt_toks = completion_toks = 0
         if hasattr(resp, "usage") and resp.usage:
             toks = getattr(resp.usage, "total_tokens", 0) or 0
+            prompt_toks = getattr(resp.usage, "prompt_tokens", 0) or 0
+            completion_toks = getattr(resp.usage, "completion_tokens", 0) or 0
+            if not toks:
+                toks = prompt_toks + completion_toks
             _llm_state["total_tokens"] += toks
             _llm_state["role_tokens"][role_key] = _llm_state["role_tokens"].get(role_key, 0) + toks
+
+        # Feed the session budget. Previously tokens were counted into
+        # _llm_state and never acted upon — there was no ceiling, no cost cap
+        # and no breaker anywhere in the system.
+        tracker = get_budget()
+        if tracker is not None:
+            if not prompt_toks and not completion_toks:
+                # Local backends often omit usage; fall back to an estimate so
+                # the breaker still works rather than silently never tripping.
+                prompt_toks = estimate_tokens(messages)
+                completion_toks = 0
+            tracker.record(
+                model=model_name,
+                prompt_tokens=prompt_toks,
+                completion_tokens=completion_toks,
+                role=role_key,
+            )
+
+    # Circuit breaker: refuse before spending, and raise rather than return
+    # None — a silently skipped call yields a half-built artefact that looks
+    # complete to everything downstream.
+    tracker = get_budget()
+    if tracker is not None:
+        tracker.check(estimate_tokens(messages), role=role_key)
 
     try:
         response = await _call_with_retry(

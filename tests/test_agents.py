@@ -102,16 +102,26 @@ class TestRankingAgent:
         assert h_a.elo_rating > 1200.0
         assert h_b.elo_rating < 1200.0
 
-    def test_elo_sum_conserved(self):
+    def test_rating_update_is_not_zero_sum_by_design(self):
+        """Bradley-Terry deliberately breaks Elo's sum conservation.
+
+        Under Elo both competitors move by the same amount. Under BT the
+        better-observed competitor (smaller sigma) moves less, because we
+        already had good evidence about it. Sum conservation is therefore
+        not an invariant here -- asserting it would forbid the very property
+        that makes uncertainty load-bearing.
+        """
         agent = RankingAgent(use_local_llm=False)
-        h_a = make_hypothesis("A")
-        h_b = make_hypothesis("B")
-        initial_sum = h_a.elo_rating + h_b.elo_rating
+        h_a = make_hypothesis("well-observed")
+        h_b = make_hypothesis("newcomer")
+        h_a.rating_mu, h_a.rating_sigma, h_a.rating_matches = 1200.0, 60.0, 20
+        h_b.rating_mu, h_b.rating_sigma, h_b.rating_matches = 1200.0, 200.0, 0
 
         agent._update_elo_ratings(h_a, h_b, h_a.id)
-        final_sum = h_a.elo_rating + h_b.elo_rating
 
-        assert abs(final_sum - initial_sum) < 1e-6, "Elo sum should be conserved"
+        moved_a = abs(h_a.rating_mu - 1200.0)
+        moved_b = abs(h_b.rating_mu - 1200.0)
+        assert moved_b > moved_a, "the less certain belief must move more"
 
     def test_conduct_match_with_fallback(self):
         """Without LLM, tournament should use heuristic fallback."""

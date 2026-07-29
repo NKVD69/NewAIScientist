@@ -198,10 +198,39 @@ class Hypothesis:
     # Falsifiability score (0..1), filled by FalsifiabilityAgent/PreregistrationAgent
     falsifiability_score: float = 0.0
     prediction_hash: str = ""
+    # ISO timestamp of pre-registration. Deliberately NOT part of the hashed
+    # bundle — including it was what made verify_integrity() always fail.
+    registered_at: str = ""
+
+    # Auditable novelty assessment (utils/novelty.py). Replaces a score that
+    # was a function of generation_method rather than of the literature.
+    novelty_report: dict = field(default_factory=dict)
+
+    # --- Bayesian Bradley-Terry rating (supersedes bare elo_rating) ---
+    # ``elo_rating`` above is kept as a mirror of ``rating_mu`` so existing
+    # dashboards, exports and sort keys keep working unchanged.
+    rating_mu: float = 1200.0
+    rating_sigma: float = 200.0     # belief uncertainty; shrinks with matches
+    rating_matches: int = 0
+
+    @property
+    def rating_conservative(self) -> float:
+        """Rank-safe estimate (μ − 2σ): a lucky single win cannot win the cut."""
+        return self.rating_mu - 2.0 * self.rating_sigma
+
+    # --- Empirical adjudication (replaces grep on experimental_results) ---
+    # Structured record of every experiment run against this hypothesis.
+    experiment_runs: list[dict] = field(default_factory=list)
+    # Flattened verdicts from the most recent adjudication.
+    verdicts: list[dict] = field(default_factory=list)
+    # Signed evidence in [-1, 1] accumulated from adjudicated runs.
+    empirical_support: float = 0.0
 
     # Replication & Reproducibility metrics
     reproducibility_score: float = 0.0
     replication_results: list[dict] = field(default_factory=list)
+    # Fraction of defensible analytic specifications that flip the conclusion.
+    multiverse_fragility: float = 0.0
 
     # Free-text annotations from the scientist using the system (set via the
     # PATCH /hypothesis/{id}/notes endpoint; not interpreted by the agents).

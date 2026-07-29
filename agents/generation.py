@@ -13,7 +13,7 @@ import hashlib
 import json
 import logging
 
-from models.hypothesis import Hypothesis, ResearchGoal
+from models.hypothesis import Claim, Evidence, Hypothesis, ResearchGoal
 from utils.llm import ensure_str, get_llm_completion, parse_json_response
 
 from .base import BaseAgent
@@ -178,6 +178,19 @@ Veuillez générer {count} hypothèses distinctes. Pour chaque hypothèse, fourn
   "mechanism": "Décrivez précisément le mécanisme biochimique ou physique proposé. Comment les différentes composantes interagissent-elles ?",
   "testable_predictions": ["Liste de prédictions techniques et quantifiables.", "Prédiction 2", "..."],
   "cited_papers": ["Liste STRICte des identifiants des articles (ex: '[a1b2c3d4]', '[e5f6g7h8]') trouvés dans le contexte. N'inventez pas d'identifiants.", "..."],
+  "claims": [
+    {{
+      "statement": "Une affirmation atomique et falsifiable (une seule assertion par entrée).",
+      "confidence": 0.7,
+      "evidence": [
+        {{"text": "Passage ou fait qui étaye cette affirmation précise.",
+         "source_type": "rag|citation|prior",
+         "source_ref": "L'identifiant [a1b2c3d4] de l'article, ou '' si connaissance générale.",
+         "polarity": 1,
+         "confidence": 0.6}}
+      ]
+    }}
+  ],
   "grounding_evidence": ["Références précises issues du contexte ou principes physiques fondamentaux.", "Preuve 2", "..."],
   "limitations": ["Analyse critique des failles potentielles de l'hypothèse.", "Limitation 2", "..."]
 }}
@@ -247,6 +260,7 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
                     grounding_evidence=grounding,
                     limitations=item.get("limitations", []),
                     cited_papers=cited_titles,
+                    claims=self._build_claims(item, rag_context),
                     generation_method="llm-generated"
                 ))
             return hypotheses
@@ -254,6 +268,86 @@ Assurez-vous que la sortie entière est un seul tableau JSON contenant {count} o
             logger.warning("Error parsing LLM response: %s", e)
             logger.debug("Raw response: %s", content)
             return []
+
+    @staticmethod
+    def _build_claims(item: dict, rag_context: list[dict] | None = None) -> list[Claim]:
+        """Turn the LLM's ``claims`` block into structured Claim/Evidence objects.
+
+        ``Claim`` and ``Evidence`` were defined in ``models/hypothesis.py`` with
+        polarity, per-item confidence and a ``source_ref`` for provenance — and
+        were never instantiated anywhere in production. This is that
+        instantiation. It is what makes partial refutation and
+        claim-to-chunk provenance possible: without it a hypothesis is an
+        undifferentiated blob of prose and can only be accepted or rejected
+        whole.
+
+        Degrades gracefully: a model that ignores the ``claims`` key yields a
+        single claim carrying the hypothesis description, so downstream code
+        can always assume a non-empty list.
+        """
+        known_refs = {
+            (c.get("paper_id") or "")[:8] for c in (rag_context or [])
+        } | {""}
+
+        claims: list[Claim] = []
+        for raw in item.get("claims", []) or []:
+            if not isinstance(raw, dict):
+                continue
+            statement = ensure_str(raw.get("statement", "")).strip()
+            if not statement:
+                continue
+
+            evidence: list[Evidence] = []
+            for ev in raw.get("evidence", []) or []:
+                if not isinstance(ev, dict):
+                    continue
+                try:
+                    polarity = int(ev.get("polarity", 1))
+                except (TypeError, ValueError):
+                    polarity = 1
+                polarity = polarity if polarity in (-1, 0, 1) else 1
+
+                try:
+                    conf = float(ev.get("confidence", 0.5))
+                except (TypeError, ValueError):
+                    conf = 0.5
+                conf = min(1.0, max(0.0, conf))
+
+                source_ref = ensure_str(ev.get("source_ref", "")).strip("[] ")
+                source_type = ensure_str(ev.get("source_type", "prior")).lower()
+                if source_type not in ("rag", "citation", "prior", "experiment"):
+                    source_type = "prior"
+                # A citation the model invented is worse than no citation:
+                # downgrade unresolvable refs to "prior" so the provenance
+                # chain never claims support it cannot produce.
+                if source_type in ("rag", "citation") and source_ref not in known_refs:
+                    source_type, source_ref = "prior", ""
+
+                evidence.append(Evidence(
+                    text=ensure_str(ev.get("text", ""))[:1000],
+                    source_type=source_type,
+                    source_ref=source_ref,
+                    polarity=polarity,
+                    confidence=conf,
+                ))
+
+            try:
+                claim_conf = float(raw.get("confidence", 0.5))
+            except (TypeError, ValueError):
+                claim_conf = 0.5
+
+            claims.append(Claim(
+                statement=statement,
+                evidence=evidence,
+                confidence=min(1.0, max(0.0, claim_conf)),
+            ))
+
+        if not claims:
+            fallback = ensure_str(item.get("description", "")).strip()
+            if fallback:
+                claims = [Claim(statement=fallback, confidence=0.5)]
+
+        return claims
 
     async def _generate_simulated(self, goal: ResearchGoal, count: int) -> list[Hypothesis]:
         """Generate initial hypotheses using simulation (fallback)."""

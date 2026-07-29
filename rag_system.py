@@ -436,6 +436,56 @@ class DocumentProcessor:
         return text.strip()
 
 
+#: Embedding models in preference order.
+#:
+#: ``all-MiniLM-L6-v2`` is a 384-d generalist trained on web text. On
+#: biomedical prose it conflates entities that are close in surface form and
+#: distant in meaning -- gene nomenclature, compound names, pathway
+#: terminology -- which is precisely the vocabulary this system retrieves
+#: over. Domain models are tried first; MiniLM remains the fallback so the
+#: graceful-degradation pattern used throughout the codebase still holds.
+EMBEDDING_CANDIDATES: list[tuple[str, str]] = [
+    ("FremyCompany/BioLORD-2023", "biomedical concept similarity"),
+    ("pritamdeka/S-PubMedBert-MS-MARCO", "biomedical passage retrieval"),
+    ("allenai/specter2_base", "scientific paper-level similarity"),
+    ("all-MiniLM-L6-v2", "generalist fallback"),
+]
+
+
+def _load_embedding_model():
+    """Load the best available embedding model.
+
+    Honours ``NEWAISCI_EMBEDDING_MODEL`` when set, otherwise walks the
+    candidate list. Returns ``(model, name)``; ``(None, None)`` if none load.
+    """
+    import os
+
+    override = os.environ.get("NEWAISCI_EMBEDDING_MODEL", "").strip()
+    candidates = (
+        [(override, "explicit override")] + EMBEDDING_CANDIDATES
+        if override else EMBEDDING_CANDIDATES
+    )
+
+    for name, purpose in candidates:
+        try:
+            logger.info("Loading embedding model '%s' (%s)...", name, purpose)
+            model = SentenceTransformer(name)
+            logger.info("Embedding model loaded: %s", name)
+            if name == "all-MiniLM-L6-v2":
+                logger.warning(
+                    "Using the generalist fallback embedding model. For "
+                    "biomedical corpora a domain model gives substantially "
+                    "better retrieval; install one of: %s",
+                    ", ".join(n for n, _ in EMBEDDING_CANDIDATES[:3]),
+                )
+            return model, name
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Embedding model '%s' unavailable: %s", name, exc)
+
+    logger.warning("No embedding model could be loaded; dense retrieval disabled.")
+    return None, None
+
+
 class SemanticChunker:
     """Intelligent text chunking with semantic awareness"""
 
@@ -460,7 +510,75 @@ class SemanticChunker:
             return len(text) // 4
 
     def chunk_text(self, text: str, paper_id: str, paper_title: str) -> list[DocumentChunk]:
-        """Split text into semantic chunks"""
+        """Split text into semantic chunks, tagged with their IMRaD section.
+
+        Section tagging is what stops a sentence from the Discussion -- where
+        authors speculate in the subjunctive about what their results might
+        imply -- from being indistinguishable downstream from a sentence in
+        Results, where they report what they measured. GenerationAgent grounds
+        hypotheses in retrieved chunks, so without this, author speculation
+        entered the pipeline as established fact and came back out as
+        "grounding evidence".
+
+        Chunks from the References section are dropped: they are citation
+        strings, useless as retrieval targets and pure index pollution.
+        """
+        chunks = self._chunk_text_raw(text, paper_id, paper_title)
+        return self._annotate_sections(chunks, text)
+
+    @staticmethod
+    def _annotate_sections(
+        chunks: list[DocumentChunk], full_text: str,
+    ) -> list[DocumentChunk]:
+        """Attach section labels and evidential weights; drop References."""
+        try:
+            from utils.imrad import (
+                Section,
+                annotate_chunk,
+                evidential_score,
+                section_at,
+                segment,
+                should_index,
+            )
+        except ImportError:
+            return chunks
+
+        spans = segment(full_text)
+        if not spans:
+            return chunks
+
+        kept: list[DocumentChunk] = []
+        cursor = 0
+        for chunk in chunks:
+            head = (chunk.text or "")[:120]
+            offset = full_text.find(head, cursor) if head else -1
+            if offset < 0:
+                offset = full_text.find(head) if head else cursor
+            if offset < 0:
+                offset = cursor
+            else:
+                cursor = offset
+
+            section = section_at(spans, offset)
+            if not should_index(section):
+                continue
+
+            chunk.section = section
+            meta = dict(chunk.metadata or {})
+            meta.update(annotate_chunk(chunk.text, section))
+            meta["evidential_score"] = evidential_score(chunk.text, section)
+            chunk.metadata = meta
+            kept.append(chunk)
+
+        # Never return an empty index because heading detection misfired.
+        if not kept and chunks:
+            for chunk in chunks:
+                chunk.section = Section.UNKNOWN
+            return chunks
+        return kept
+
+    def _chunk_text_raw(self, text: str, paper_id: str, paper_title: str) -> list[DocumentChunk]:
+        """Split text into semantic chunks (section-agnostic)."""
 
         # Split by paragraphs first
         paragraphs = text.split('\n\n')
@@ -586,13 +704,9 @@ class RAGEngine:
 
         # Initialize embedding model
         self.embedding_model = None
+        self.embedding_model_name = None
         if SentenceTransformer:
-            try:
-                logger.info("Loading embedding model (first run may take a moment)...")
-                self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-                logger.info("Embedding model loaded.")
-            except Exception as e:
-                logger.warning("Failed to load embedding model: %s", e)
+            self.embedding_model, self.embedding_model_name = _load_embedding_model()
 
         # Initialize vector store
         self.chroma_client = None
@@ -915,6 +1029,6 @@ class RAGEngine:
         return {
             "status": "ready",
             "total_chunks": self.collection.count(),
-            "embedding_model": "all-MiniLM-L6-v2" if self.embedding_model else None,
+            "embedding_model": self.embedding_model_name,
             "vector_db": "ChromaDB" if self.chroma_client else None
         }

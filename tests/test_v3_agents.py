@@ -140,54 +140,90 @@ class TestExperimentAgent:
             mock_llm.return_value = mock_resp
 
             result = await agent.run_experiment(hyp, goal)
-            assert "blocked by safety filter" in result
+            # The AST check is now a *quality* filter, not a security boundary
+            # (see utils/safety.py and utils/sandbox_runner.py). The wording
+            # changed to stop callers treating a pass as authorisation to run.
+            assert "quality filter" in result
+            assert "os" in result
             assert hyp.experimental_results == result
 
     @pytest.mark.asyncio
-    async def test_experiment_isolation(self):
-        import subprocess
+    async def test_execution_is_refused_without_isolation(self, monkeypatch):
+        """Execution must fail closed, not fall back to the user's privileges.
 
+        Replaces the old test, which asserted that ``subprocess.run`` was
+        called with ``cwd`` pointing into the temp tree. That property was
+        never isolation: cwd changes the working directory, it does not
+        confine the filesystem, and the script still ran with the full user
+        UID and unrestricted network. Execution now goes through
+        ``utils.sandbox_runner``, which refuses to run at all when no
+        container runtime is available.
+        """
         from agents import ExperimentAgent
+        from utils import sandbox_runner
+
+        monkeypatch.setattr(sandbox_runner, "detect_runtime", lambda *a, **k: "none")
+
         agent = ExperimentAgent(use_local_llm=False)
         agent.llm_client = MagicMock()
+        hyp, goal = make_hypothesis(), make_goal()
 
-        hyp = make_hypothesis()
-        goal = make_goal()
-
-        safe_code = "```python\nprint('Hello World')\n```"
-
-        # Mock LLM and subprocess
-        with patch("agents.experiment.get_llm_completion") as mock_llm, \
-             patch("subprocess.run") as mock_run:
-
+        with patch("agents.experiment.get_llm_completion") as mock_llm:
             mock_resp = MagicMock()
             mock_message = MagicMock()
-            mock_message.content = safe_code
+            mock_message.content = "```python\nprint('Hello World')\n```"
             mock_choice = MagicMock()
             mock_choice.message = mock_message
             mock_resp.choices = [mock_choice]
             mock_llm.return_value = mock_resp
 
-            mock_run.return_value = MagicMock(stdout="Hello World", stderr="", returncode=0)
+            result = await agent.run_experiment(hyp, goal)
+
+        assert "execution refused" in result.lower()
+        assert hyp.experiment_runs, "the refused run must still be recorded"
+        assert hyp.experiment_runs[-1]["exit_code"] is None
+
+    @pytest.mark.asyncio
+    async def test_sandboxed_run_is_recorded_structurally(self, monkeypatch):
+        """A successful run yields an ExperimentRun, not just a text blob."""
+        from agents import ExperimentAgent
+        from utils import sandbox_runner
+        from utils.adjudication import RESULTS_MARKER
+
+        stdout = (
+            "Analysis complete.\n"
+            f'{RESULTS_MARKER} {{"measurements": [{{"quantity": "IC50", '
+            '"observed": 2.1, "unit": "uM"}]}'
+        )
+        monkeypatch.setattr(sandbox_runner, "detect_runtime", lambda *a, **k: "docker")
+        monkeypatch.setattr(
+            sandbox_runner, "_run_container",
+            lambda runtime, policy, host_dir: sandbox_runner.SandboxResult(
+                stdout=stdout, exit_code=0, backend=runtime, duration_s=0.1,
+            ),
+        )
+
+        agent = ExperimentAgent(use_local_llm=False)
+        agent.llm_client = MagicMock()
+        hyp, goal = make_hypothesis(), make_goal()
+
+        with patch("agents.experiment.get_llm_completion") as mock_llm:
+            mock_resp = MagicMock()
+            mock_message = MagicMock()
+            mock_message.content = "```python\nprint('ok')\n```"
+            mock_choice = MagicMock()
+            mock_choice.message = mock_message
+            mock_resp.choices = [mock_choice]
+            mock_llm.return_value = mock_resp
 
             await agent.run_experiment(hyp, goal)
 
-            # Verify cwd was passed to subprocess.run and points inside the
-            # OS temp tree (Windows: ...\Temp\..., Linux/macOS: /tmp/...).
-            assert mock_run.called
-            args, kwargs = mock_run.call_args
-            assert "cwd" in kwargs
-            import tempfile
-            cwd_str = str(kwargs["cwd"])
-            tmp_root = tempfile.gettempdir()
-            assert cwd_str.startswith(tmp_root) or "temp" in cwd_str.lower() or "tmp" in cwd_str.lower(), (
-                f"cwd {cwd_str!r} not under tempdir {tmp_root!r}"
-            )
+        assert len(hyp.experiment_runs) == 1
+        run = hyp.experiment_runs[0]
+        assert run["sandbox_backend"] == "docker"
+        assert run["measurements"][0]["quantity"] == "IC50"
+        assert run["code_sha256"]
 
-
-# ---------------------------------------------------------------------------
-# SupervisorAgent (Orchestration)
-# ---------------------------------------------------------------------------
 
 class TestSupervisorAgent:
     @pytest.mark.asyncio

@@ -191,8 +191,10 @@ class TestMultiCriterionJudge:
             "testability": "B", "impact": "B",
         }
         # Default weights: novelty=0.25, plausibility=0.30, testability=0.25, impact=0.20
-        # A score: 0.55 ; B score: 0.45 ⇒ A wins
-        assert agent._aggregate_verdicts("A", "B", verdicts) == "A"
+        # A score: 0.55 ; B score: 0.45 ⇒ A wins, and it is not a draw.
+        # (Returns a (winner, is_draw) tuple now: exact ties are real draws
+        # rather than being broken deterministically toward A.)
+        assert agent._aggregate_verdicts("A", "B", verdicts) == ("A", False)
 
     def test_per_criterion_elo_default(self):
         agent = self._agent()

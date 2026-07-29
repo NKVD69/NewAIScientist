@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 
 from models.hypothesis import Hypothesis, UserFeedback
+from utils import bradley_terry as bt
 from utils.llm import ensure_str, get_llm_completion, parse_json_response
 
 from .base import BaseAgent
@@ -27,15 +28,88 @@ class EvolutionAgent(BaseAgent):
         super().__init__(use_local_llm=use_local_llm)
         self.evolved_hypotheses = 0
 
+    @staticmethod
+    def _inherit_rating(child: Hypothesis, parent: Hypothesis) -> None:
+        """Seed the offspring's rating from its parent.
+
+        Fixes the anti-Darwinian defect: offspring used to start at the flat
+        1200 default while their parents -- selected for evolution *because*
+        they ranked highest -- sat above it. With ~1.7 matches each, children
+        could never close that gap, so the tournament systematically preferred
+        the initial generation and the evolutionary loop could produce no
+        selective gain.
+
+        Inheritance is partial (regression toward the mean) because an evolved
+        hypothesis is genuinely a different object, and sigma is inflated
+        because we know less about the child than about the parent. Wide error
+        bars are what make the information-gain pairer prioritise it for
+        testing rather than leave it unplayed.
+        """
+        parent_rating = bt.Rating(
+            mu=parent.rating_mu,
+            sigma=parent.rating_sigma,
+            matches=parent.rating_matches,
+        )
+        child_rating = bt.inherit(parent_rating)
+        child.rating_mu = child_rating.mu
+        child.rating_sigma = child_rating.sigma
+        child.rating_matches = 0          # the child has played nothing yet
+        child.elo_rating = child_rating.mu
+
+    @staticmethod
+    def _record_refutations(child: Hypothesis, refutations: list[dict] | None) -> None:
+        """Carry the refuted quantities forward as explicit limitations.
+
+        A revised hypothesis must not silently drop the fact that its parent
+        was contradicted -- otherwise the lineage launders a refutation into a
+        fresh-looking hypothesis after one evolution step.
+        """
+        for ref in refutations or []:
+            child.limitations.append(
+                f"Parent refuted on {ref.get('quantity', '?')}: expected "
+                f"{ref.get('expected')} {ref.get('unit', '')}, observed "
+                f"{ref.get('observed')}"
+            )
+
+    @staticmethod
+    def _format_refutations(refutations: list[dict] | None) -> str:
+        """Render refutations for injection into the revision prompt."""
+        if not refutations:
+            return ""
+        lines = ["", "The following pre-registered predictions were REFUTED by experiment:"]
+        for ref in refutations:
+            lines.append(
+                f"  - {ref.get('quantity', '?')}: predicted "
+                f"{ref.get('expected')} {ref.get('unit', '')}, measured "
+                f"{ref.get('observed')} (deviation {ref.get('deviation')})"
+            )
+        lines.append("")
+        lines.append(
+            "Revise the mechanism so that it ACCOUNTS for these measurements. "
+            "Do not simply restate the original claim with softer wording, and "
+            "do not widen the thresholds to accommodate the failure -- that is "
+            "post-hoc rationalisation. If the measurements cannot be reconciled "
+            "with the mechanism, say so and propose a different mechanism."
+        )
+        return "\n".join(lines)
+
     async def evolve_hypothesis(self,
                                hypothesis: Hypothesis,
-                               strategy: str = "enhancement") -> Hypothesis:
+                               strategy: str = "enhancement",
+                               refutations: list[dict] | None = None) -> Hypothesis:
         """
         Improve hypothesis using specified strategy:
         - enhancement: ground in literature
         - simplification: make clearer and more concise
         - combination: combine with other top hypotheses
         - inspiration: derive from top hypotheses
+        - experimental_revision: repair the specific claims that were refuted
+
+        ``refutations`` carries the structured verdicts from
+        ``utils.adjudication`` (quantity, expected, observed, unit). Passing
+        them lets the revision target the claim that actually failed, instead
+        of handing the LLM an opaque blob of stdout and hoping it infers what
+        went wrong.
         """
         new_hyp = Hypothesis(
             title=hypothesis.title + f" (Evolved: {strategy})",
@@ -44,6 +118,7 @@ class EvolutionAgent(BaseAgent):
             parent_ids=[hypothesis.id],
             generation_method="evolved"
         )
+        self._inherit_rating(new_hyp, hypothesis)
 
         if strategy == "enhancement":
             new_hyp = await self._enhance_with_grounding(new_hyp, hypothesis)
@@ -54,10 +129,13 @@ class EvolutionAgent(BaseAgent):
         elif strategy == "experimental_revision":
             new_hyp.title = f"Revised: {hypothesis.title}"
             new_hyp.generation_method = "experimental-revision"
+            self._record_refutations(new_hyp, refutations)
 
         # Try LLM-based refinement if available
         if self.llm_client:
-            new_hyp = await self._llm_refine_evolution(new_hyp, hypothesis, strategy)
+            new_hyp = await self._llm_refine_evolution(
+                new_hyp, hypothesis, strategy, refutations=refutations,
+            )
 
         self.evolved_hypotheses += 1
         return new_hyp
@@ -105,7 +183,13 @@ class EvolutionAgent(BaseAgent):
         )
         return new_hyp
 
-    async def _llm_refine_evolution(self, new_hyp: Hypothesis, original: Hypothesis, strategy: str) -> Hypothesis:
+    async def _llm_refine_evolution(
+        self,
+        new_hyp: Hypothesis,
+        original: Hypothesis,
+        strategy: str,
+        refutations: list[dict] | None = None,
+    ) -> Hypothesis:
         """Use LLM to refine evolved hypothesis"""
         experimental_results_text = ""
         if strategy == "out_of_box":
@@ -121,7 +205,15 @@ class EvolutionAgent(BaseAgent):
                 "Modify the hypothesis description, biochemical/physical mechanism, and predictions to reconcile "
                 "them with the experimental findings (especially addressing and adjusting any refuted predictions)."
             )
-            experimental_results_text = f"\n- Experimental/Simulation Results: {original.experimental_results}\n"
+            # Prefer the structured verdicts over the raw stdout blob: they
+            # name the exact quantity that failed and by how much.
+            structured = self._format_refutations(refutations)
+            if structured:
+                experimental_results_text = structured
+            else:
+                experimental_results_text = (
+                    f"\n- Experimental/Simulation Results: {original.experimental_results[:1500]}\n"
+                )
         else:
             system_prompt = "You are a meticulous scientific research assistant."
             task_instruction = f"Improve the following hypothesis using the '{strategy}' strategy. Ground it in realistic pathways."
@@ -200,6 +292,7 @@ Provide an improved version as a JSON object with keys: "title", "description", 
             parent_ids=[hypothesis.id],
             generation_method="evolved-feedback",
         )
+        self._inherit_rating(new_hyp, hypothesis)
 
         # Always record the human constraint, even when the LLM is offline.
         constraint = (feedback.comment or "").strip()
