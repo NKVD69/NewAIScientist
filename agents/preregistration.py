@@ -70,6 +70,7 @@ class PreregistrationAgent(BaseAgent):
                     hypothesis.prediction_hash = self._compute_prediction_hash(
                         predictions
                     )
+                    hypothesis.registered_at = datetime.now().isoformat()
                     self.predictions_formalized += len(predictions)
                     logger.info(
                         "Formalized %d predictions for '%s' (score=%.2f, hash=%s).",
@@ -179,6 +180,7 @@ Return ONLY the JSON list."""
         hypothesis.falsifiable_predictions = predictions
         hypothesis.falsifiability_score = 0.0
         hypothesis.prediction_hash = self._compute_prediction_hash(predictions)
+        hypothesis.registered_at = datetime.now().isoformat()
         self.predictions_formalized += len(predictions)
         return predictions
 
@@ -198,21 +200,33 @@ Return ONLY the JSON list."""
     def _compute_prediction_hash(predictions: list[Prediction]) -> str:
         """Compute a SHA-256 hash of the prediction bundle for integrity.
 
-        This hash is computed BEFORE experimentation and can be verified
-        afterwards to ensure predictions were not modified post-hoc.
+        This hash is computed BEFORE experimentation and verified afterwards
+        to ensure predictions were not modified post-hoc (anti-HARKing).
+
+        The bundle contains ONLY prediction content. A previous version also
+        hashed ``datetime.now()``, which made the digest differ on every call
+        and left ``verify_integrity()`` returning False unconditionally — the
+        anti-HARKing guarantee was vacuous. The registration timestamp is now
+        stored alongside the hash (``registered_at``) instead of inside it.
+
+        Predictions are sorted by quantity so that a reordering of the list —
+        which changes nothing scientifically — does not read as tampering.
         """
         bundle = {
-            "timestamp": datetime.now().isoformat(),
-            "predictions": [
-                {
-                    "quantity": p.quantity,
-                    "expected_value": p.expected_value,
-                    "ci": p.ci,
-                    "unit": p.unit,
-                    "refuting_threshold": p.refuting_threshold,
-                }
-                for p in predictions
-            ],
+            "schema": "newaisci.prediction-bundle.v1",
+            "predictions": sorted(
+                (
+                    {
+                        "quantity": p.quantity,
+                        "expected_value": p.expected_value,
+                        "ci": p.ci,
+                        "unit": p.unit,
+                        "refuting_threshold": p.refuting_threshold,
+                    }
+                    for p in predictions
+                ),
+                key=lambda d: (d["quantity"], d["unit"]),
+            ),
         }
         canonical = json.dumps(bundle, sort_keys=True, ensure_ascii=True)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -220,17 +234,35 @@ Return ONLY the JSON list."""
     async def verify_integrity(self, hypothesis: Hypothesis) -> bool:
         """Check that the prediction hash still matches the stored predictions.
 
-        Returns True if the predictions have not been tampered with since
-        pre-registration. This is a post-experiment integrity check.
+        Returns True iff the predictions are byte-identical (modulo ordering)
+        to those registered before experimentation. Must be called AFTER the
+        experiment and BEFORE the verdicts are trusted: a hypothesis whose
+        predictions moved between registration and adjudication has been
+        HARKed and its verdicts are worthless.
         """
-        if not hypothesis.prediction_hash or not hypothesis.falsifiable_predictions:
-            return False
-        current_hash = self._compute_prediction_hash(
-            hypothesis.falsifiable_predictions
+        ok, _ = self.check_integrity(hypothesis)
+        return ok
+
+    @classmethod
+    def check_integrity(cls, hypothesis: Hypothesis) -> tuple[bool, str]:
+        """Like :meth:`verify_integrity` but explains *why* it failed.
+
+        A bare False is unactionable — "never registered" and "modified after
+        the fact" have opposite implications and must be distinguishable.
+        """
+        if not hypothesis.falsifiable_predictions:
+            return False, "predictions were never registered"
+        if not hypothesis.prediction_hash:
+            return False, "predictions exist but were never sealed with a hash"
+
+        current = cls._compute_prediction_hash(hypothesis.falsifiable_predictions)
+        if current == hypothesis.prediction_hash:
+            return True, f"intact (sha256:{current[:12]})"
+        return False, (
+            f"TAMPERED: predictions changed since registration "
+            f"(registered sha256:{hypothesis.prediction_hash[:12]}, "
+            f"current sha256:{current[:12]})"
         )
-        # We only compare the prediction content, not the timestamp
-        # (which differs between registration and verification)
-        return current_hash == hypothesis.prediction_hash
 
 
 __all__ = ["PreregistrationAgent"]

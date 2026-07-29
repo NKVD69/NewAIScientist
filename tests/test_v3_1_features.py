@@ -2,17 +2,18 @@
 tests/test_v3_1_features.py — Unit tests for v3.1 functional enhancements.
 """
 
-import os
 import json
-import pytest
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 import config
-from utils.llm import get_llm_completion, get_llm_usage_stats
 from agents.literature import LiteratureAgent
 from agents.writing import WritingAgent
-from utils.notebook_exporter import generate_reproducible_notebook
 from models.hypothesis import Hypothesis, ResearchGoal
+from utils.llm import get_llm_completion, get_llm_usage_stats
+from utils.notebook_exporter import generate_reproducible_notebook
 
 
 def test_config_role_based_llm():

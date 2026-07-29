@@ -25,6 +25,13 @@ from .hypothesis import (
     Variable,
     VariableRole,
 )
+from .experiment import (
+    ExperimentKind,
+    ExperimentRun,
+    Measurement,
+    Verdict,
+    VerdictStatus,
+)
 from .memory import ContextMemory, TournamentMatch
 
 __all__ = [
@@ -55,6 +62,12 @@ __all__ = [
     # Writing
     "ManuscriptSection",
     "Manuscript",
+    # Experiment adjudication
+    "ExperimentKind",
+    "ExperimentRun",
+    "Measurement",
+    "Verdict",
+    "VerdictStatus",
     # Memory
     "ContextMemory",
     "TournamentMatch",

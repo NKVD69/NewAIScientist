@@ -19,7 +19,10 @@ import os
 import random
 from dataclasses import asdict
 from typing import Any
+from utils import bradley_terry as bt
+from utils.budget import BudgetTracker, enable_from_env
 from utils.convergence import ConvergenceTracker
+from utils.pipeline import FailurePolicy, TaskSpec
 
 # Re-exported for legacy callers (e.g. scripts/generate_paper.py).
 import config  # noqa: F401
@@ -78,10 +81,22 @@ except ImportError:
 class CoScientist:
     """Main AI co-scientist system coordinator — pure orchestration, no agent logic."""
 
-    def __init__(self, use_local_llm: bool = True, enable_rag: bool = True):
+    def __init__(
+        self,
+        use_local_llm: bool = True,
+        enable_rag: bool = True,
+        budget: BudgetTracker | None = None,
+        max_parallel: int = 4,
+    ):
         self.name = "Orchestrator"
         self.context_memory = ContextMemory()
-        self.supervisor = SupervisorAgent()
+        # Budgeting: explicit tracker wins, else environment, else unlimited.
+        # A run with no ceiling was the previous unconditional default.
+        self.budget = budget if budget is not None else enable_from_env()
+        self.supervisor = SupervisorAgent(
+            max_parallel=max_parallel, budget=self.budget,
+        )
+        self.run_reports = []
 
         # Core agents (v2.2)
         self.generation_agent = GenerationAgent(use_local_llm=use_local_llm)
@@ -255,6 +270,36 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         """Review all unreviewed hypotheses."""
         print("\n📝 Conducting hypothesis reviews...")
         unreviewed = [h for h in self.context_memory.hypotheses.values() if len(h.reviews) == 0]
+
+        # Ground novelty in a prior-art search before reviewing. Batched so
+        # the Semantic Scholar rate limiter is respected, and done up front
+        # because novelty carries weight 0.25 in the ranking prior — a
+        # fabricated value there propagates into every later selection.
+        if unreviewed:
+            try:
+                from utils.novelty import apply_report, assess_many
+
+                reports = await assess_many(
+                    unreviewed,
+                    rag_engine=getattr(self.literature_agent, "rag_engine", None),
+                    graph_agent=getattr(self, "graph_agent", None),
+                )
+                assessed = 0
+                for hyp in unreviewed:
+                    report = reports.get(hyp.id)
+                    if report is not None:
+                        apply_report(hyp, report)
+                        assessed += 1 if report.searched else 0
+                print(f"  🔍 Prior-art search: {assessed}/{len(unreviewed)} hypotheses assessed")
+                flagged = [
+                    h for h in unreviewed
+                    if any("prior art" in lim.lower() for lim in h.limitations)
+                ]
+                for hyp in flagged:
+                    print(f"  ⚠ Possible prior art for '{hyp.title[:45]}'")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Batch novelty assessment failed: %s", exc)
+
         reviews = []
         for hyp in unreviewed:
             review = await self.reflection_agent.review_hypothesis(hyp, self.context_memory.research_goal)
@@ -265,18 +310,29 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
 
     async def run_tournament_cycle(
         self,
-        num_matches: int = 5,
-        pairing: str = "information_gain",
+        num_matches: int | None = None,
+        pairing: str = "bradley_terry",
+        stop_when_separated: bool = True,
     ) -> list[TournamentMatch]:
-        """Conduct tournament matches.
+        """Conduct tournament matches under a Bayesian Bradley-Terry model.
 
-        ``pairing`` is one of:
-          - ``"information_gain"`` (default): pick pairs whose Elo predicts a
-            coin-flip, penalised by their match count this tournament.
-          - ``"swiss"``: classic Swiss-system top-down pairing.
-          - ``"random"``: legacy uniform-random fallback.
+        ``num_matches=None`` (the default) sizes the round from the pool via
+        ``bradley_terry.recommended_budget`` — roughly ``2·n·log₂n``. The old
+        fixed default of 4 matches gave ~1.7 games per hypothesis for a pool
+        of 14, where ~53 are needed for the ranking to be identified at all;
+        the reported ordering was mostly noise, and it selected the hypothesis
+        that got written up.
+
+        ``pairing``:
+          - ``"bradley_terry"`` (default): maximise expected information,
+            weighted by belief uncertainty, so newly-evolved hypotheses with
+            wide error bars get tested rather than left unplayed.
+          - ``"swiss"`` / ``"information_gain"`` / ``"random"``: legacy pairers.
+
+        With ``stop_when_separated`` the round ends early once the leader is
+        more than 2σ clear of the runner-up — and, more importantly, keeps
+        playing when it is not.
         """
-        print(f"\n🏆 Running tournament matches (pairing={pairing})...")
         hyp_list = list(self.context_memory.hypotheses.values())
         if len(hyp_list) < 2:
             print("  ⚠ Need at least 2 hypotheses for tournament")
@@ -286,18 +342,28 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         pool = reviewed if len(reviewed) >= 2 else hyp_list
         by_id = {h.id: h for h in pool}
 
-        # Build the list of pairs we want to play.
+        if num_matches is None:
+            num_matches = bt.recommended_budget(len(pool))
+
+        print(
+            f"\n🏆 Tournament: {len(pool)} hypotheses, budget {num_matches} matches "
+            f"(pairing={pairing})..."
+        )
+
         history_pairs = [
             (m.hypothesis_a_id, m.hypothesis_b_id)
             for m in self.context_memory.tournament_history
         ]
-        competitors = [(h.id, h.elo_rating) for h in pool]
 
-        if pairing == "swiss":
+        if pairing == "bradley_terry":
+            ratings = {h.id: self.ranking_agent.get_rating(h) for h in pool}
+            pair_plan = bt.plan_matches(
+                ratings, num_matches=num_matches, history=history_pairs,
+            ).pairs
+        elif pairing == "swiss":
             from utils.tournament_pairing import swiss_pairing
-            pair_plan: list = []
-            played = list(history_pairs)
-            # Run Swiss rounds until we have enough matches
+            competitors = [(h.id, h.rating_mu) for h in pool]
+            pair_plan, played = [], list(history_pairs)
             while len(pair_plan) < num_matches:
                 round_pairs = swiss_pairing(competitors, history=played)
                 if not round_pairs:
@@ -309,14 +375,13 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
                     played.append(p)
         elif pairing == "information_gain":
             from utils.tournament_pairing import information_gain_pairing
+            competitors = [(h.id, h.rating_mu) for h in pool]
             pair_plan = information_gain_pairing(
                 competitors, num_matches=num_matches, history=history_pairs,
             )
-        else:  # "random" / legacy
+        else:  # legacy random
             pair_plan = []
             for _ in range(num_matches):
-                if len(pool) < 2:
-                    break
                 a = random.choice(pool)
                 b = random.choice([h for h in pool if h.id != a.id])
                 pair_plan.append((a.id, b.id))
@@ -326,19 +391,54 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
             hyp_a, hyp_b = by_id.get(a_id), by_id.get(b_id)
             if hyp_a is None or hyp_b is None:
                 continue
-            winner_id, match = await self.ranking_agent.conduct_tournament_match(hyp_a, hyp_b)
+            _, match = await self.ranking_agent.conduct_tournament_match(hyp_a, hyp_b)
             matches.append(match)
             self.context_memory.tournament_history.append(match)
 
-        print(f"✓ Completed {len(matches)} tournament matches")
+            if stop_when_separated and len(matches) >= max(4, len(pool)):
+                ratings = {h.id: self.ranking_agent.get_rating(h) for h in pool}
+                separated, detail = bt.is_separated(ratings, top_k=1)
+                if separated:
+                    print(f"  ✓ Leader separated after {len(matches)} matches — {detail}")
+                    break
+
+        reliability = self.ranking_agent.judge_reliability()
+        rate = reliability.get("order_invariance_rate")
+        if rate is not None:
+            print(f"✓ {len(matches)} matches. Judge order-invariance: {rate:.0%}")
+            if rate < 0.6:
+                print(
+                    "  ⚠ The judge changes its mind when A and B are swapped more "
+                    "often than not. It is reading position, not content — treat "
+                    "this ranking as unreliable."
+                )
+        else:
+            print(f"✓ Completed {len(matches)} tournament matches")
         return matches
+
+    # ------------------------------------------------------------------
+    # Selection helper — conservative ranking
+    # ------------------------------------------------------------------
+
+    def top_hypotheses(self, n: int, conservative: bool = True) -> list[Hypothesis]:
+        """Return the top ``n`` hypotheses.
+
+        Ranks on μ − 2σ by default, so a hypothesis that won one lucky match
+        cannot displace one that survived twenty. Every downstream selection
+        (evolve, experiment, replicate, protocol, write-up) goes through here,
+        which is what makes the uncertainty actually load-bearing rather than
+        merely reported.
+        """
+        key = (
+            (lambda h: h.rating_conservative) if conservative
+            else (lambda h: h.rating_mu)
+        )
+        return sorted(self.context_memory.hypotheses.values(), key=key, reverse=True)[:n]
 
     async def run_evolution_cycle(self) -> list[Hypothesis]:
         """Evolve top hypotheses using diverse strategies."""
         print("\n🧬 Evolving hypotheses...")
-        top_hyps = sorted(
-            self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True,
-        )[:3]
+        top_hyps = self.top_hypotheses(3)
 
         strategies = ["enhancement", "simplification", "out_of_box"]
         evolved = []
@@ -353,9 +453,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     async def run_experiment_cycle(self) -> list[str]:
         """Run experiments on top hypotheses."""
         print("\n🧪 Running experiments...")
-        top_hyps = sorted(
-            self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True,
-        )[:2]
+        top_hyps = self.top_hypotheses(2)
         results = []
         for hyp in top_hyps:
             result = await self.experiment_agent.run_experiment(hyp, self.context_memory.research_goal)
@@ -377,9 +475,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     async def run_replication_cycle(self) -> list[dict]:
         """Replicate experiments to assess reproducibility for top hypotheses."""
         print("\n🧬 [Replication Phase] Verifying reproducibility of top hypotheses...")
-        top_hyps = sorted(
-            self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True
-        )[:2]
+        top_hyps = self.top_hypotheses(2)
         results = []
         for hyp in top_hyps:
             result = await self.replication_agent.replicate_experiment(
@@ -389,26 +485,80 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         return results
 
     async def run_revision_cycle(self) -> list[Hypothesis]:
-        """Auto-revise hypotheses based on experiment and replication findings."""
-        print("\n🔄 [Revision Phase] Revising hypotheses in light of empirical evidence...")
-        revised = []
+        """Revise hypotheses whose pre-registered predictions were refuted.
+
+        Replaces the substring search that used to drive this decision::
+
+            if "fail" in results.lower() or "reject" in results.lower():
+
+        which fired on "failed to reject the null hypothesis" — the standard
+        phrase for *absence of evidence against* — and missed unambiguous
+        quantitative refutations that happened not to use those words.
+
+        Refutation is now decided per prediction by ``utils.adjudication``,
+        which compares each observed measurement to the pre-registered
+        ``refuting_threshold``. Before trusting any verdict we verify the
+        pre-registration hash: if the predictions moved after registration,
+        the hypothesis was HARKed and its verdicts are worthless.
+        """
+        from models.experiment import VerdictStatus
+
+        print("\n🔄 [Revision Phase] Adjudicating hypotheses against pre-registered predictions...")
+        revised: list[Hypothesis] = []
+        tampered: list[str] = []
+
         for hyp in list(self.context_memory.hypotheses.values()):
-            if not hyp.experimental_results:
+            if not hyp.experiment_runs:
                 continue
-            
-            refuted = False
-            lower_results = hyp.experimental_results.lower()
-            if "fail" in lower_results or "not support" in lower_results or "refute" in lower_results or "reject" in lower_results:
-                refuted = True
-            
-            if refuted:
-                print(f"  ⚠ Hypothesis '{hyp.title}' has refuted/failed predictions. Triggering revision...")
-                new_hyp = await self.evolution_agent.evolve_hypothesis(
-                    hyp, strategy="experimental_revision"
+
+            # --- Anti-HARKing gate ---------------------------------------
+            intact, integrity_detail = self.preregistration_agent.check_integrity(hyp)
+            if not intact and hyp.prediction_hash:
+                print(f"  🚫 '{hyp.title[:50]}': {integrity_detail} — verdicts discarded.")
+                tampered.append(hyp.id)
+                hyp.limitations.append(f"Pre-registration integrity failure: {integrity_detail}")
+                continue
+
+            refuted = [
+                v for v in hyp.verdicts
+                if v.get("status") == VerdictStatus.REFUTED.value
+            ]
+            untested = [
+                v for v in hyp.verdicts
+                if v.get("status") in (
+                    VerdictStatus.UNTESTED.value, VerdictStatus.INVALID.value,
                 )
-                self.context_memory.hypotheses[new_hyp.id] = new_hyp
-                revised.append(new_hyp)
-        print(f"✓ Revised {len(revised)} hypotheses")
+            ]
+
+            if not refuted:
+                if untested and len(untested) == len(hyp.verdicts):
+                    # Nothing was actually tested. Say so, rather than letting
+                    # silence read as support (the old failure mode).
+                    print(
+                        f"  ⬜ '{hyp.title[:50]}': {len(untested)} prediction(s) "
+                        "untested — no empirical claim can be made."
+                    )
+                continue
+
+            detail = "; ".join(
+                f"{v['quantity']}: expected {v.get('expected')} {v.get('unit', '')}, "
+                f"observed {v.get('observed')}"
+                for v in refuted[:3]
+            )
+            print(
+                f"  ❌ '{hyp.title[:50]}': {len(refuted)}/{len(hyp.verdicts)} "
+                f"prediction(s) refuted — {detail}. Triggering revision..."
+            )
+
+            new_hyp = await self.evolution_agent.evolve_hypothesis(
+                hyp, strategy="experimental_revision", refutations=refuted,
+            )
+            self.context_memory.hypotheses[new_hyp.id] = new_hyp
+            revised.append(new_hyp)
+
+        if tampered:
+            print(f"⚠ {len(tampered)} hypothesis(es) failed the pre-registration integrity check.")
+        print(f"✓ Revised {len(revised)} hypotheses on the basis of adjudicated refutations")
         return revised
 
     # ------------------------------------------------------------------
@@ -428,11 +578,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
 
         Returns the list of newly-evolved hypotheses (may be empty).
         """
-        top = sorted(
-            self.context_memory.hypotheses.values(),
-            key=lambda h: h.elo_rating,
-            reverse=True,
-        )[:top_n]
+        top = self.top_hypotheses(top_n)
         if not top:
             logger.info("No hypotheses available for interactive feedback.")
             return []
@@ -454,7 +600,16 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
                 evolved.append(new_hyp)
             elif fb.verdict == "disagree":
                 # Mark the rejected hypothesis so downstream cycles deprioritise it.
-                hyp.elo_rating = max(0.0, hyp.elo_rating - 200.0)
+                # A scientist rejecting a hypothesis is strong evidence.
+                # Move the belief itself (and tighten it: this is not noise),
+                # not just the mirrored elo_rating field.
+                hyp.rating_mu = max(0.0, hyp.rating_mu - 200.0)
+                hyp.rating_sigma = max(bt.MIN_SIGMA, hyp.rating_sigma * 0.8)
+                hyp.elo_rating = hyp.rating_mu
+                self.ranking_agent.ratings[hyp.id] = bt.Rating(
+                    mu=hyp.rating_mu, sigma=hyp.rating_sigma,
+                    matches=hyp.rating_matches,
+                )
 
         logger.info(
             "Interactive feedback: %d feedbacks ⇒ %d evolved hypotheses.",
@@ -481,7 +636,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         """Design experimental protocol for a hypothesis."""
         self.context_memory.current_phase = StudyPhase.EXPERIMENTAL_DESIGN.value
         if not hypothesis_id:
-            top = sorted(self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True)
+            top = self.top_hypotheses(1)
             if not top:
                 return None
             hyp = top[0]
@@ -557,7 +712,7 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         print("\n📝 [Writing Phase] Drafting scientific manuscript...")
         goal = self.context_memory.research_goal
 
-        top_hyps = sorted(self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True)
+        top_hyps = self.top_hypotheses(len(self.context_memory.hypotheses) or 1)
         best_hyp = top_hyps[0] if top_hyps else None
 
         sections = {}
@@ -597,75 +752,188 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
     # FULL WORKFLOW
     # ------------------------------------------------------------------
 
-    async def run_full_cycle(self, num_iterations: int = 3):
-        """Run complete co-scientist workflow (v3.0 Extended) using the task queue."""
+    def _initial_pipeline(self, num_hypotheses: int = 5) -> list[TaskSpec]:
+        """Phase 1: build the evidence base, then generate on top of it.
+
+        ``literature`` is ABORT because everything downstream assumes a
+        populated corpus. The old code continued past its failure, so a
+        network error produced ungrounded hypotheses that nothing flagged.
+        """
+        return [
+            TaskSpec(
+                name="literature", action="run_literature_search",
+                on_failure=FailurePolicy.RETRY, max_retries=2,
+                description="Fetch and index papers. Everything downstream needs this.",
+            ),
+            TaskSpec(
+                name="scoping", action="run_scoping_cycle",
+                depends_on=("literature",), on_failure=FailurePolicy.DEGRADE,
+                description="Narrow the goal. Useful, not load-bearing.",
+            ),
+            TaskSpec(
+                name="generation", action="run_hypothesis_generation_cycle",
+                params={"num_hypotheses": num_hypotheses},
+                depends_on=("literature",), on_failure=FailurePolicy.ABORT,
+                description="No hypotheses, no run.",
+            ),
+            TaskSpec(
+                name="preregistration", action="run_preregistration_cycle",
+                depends_on=("generation",), on_failure=FailurePolicy.ABORT,
+                description="Seals predictions. Without it nothing can be adjudicated.",
+            ),
+        ]
+
+    def _iteration_pipeline(self, iteration: int) -> list[TaskSpec]:
+        """Phase 2: review, rank, evolve.
+
+        ``review`` and ``proximity`` are independent and now run concurrently;
+        the old priority integers forced them into series for no reason.
+        """
+        return [
+            TaskSpec(name="review", action="run_review_cycle",
+                     on_failure=FailurePolicy.DEGRADE),
+            TaskSpec(name="proximity", action="run_proximity_cycle",
+                     on_failure=FailurePolicy.DEGRADE),
+            TaskSpec(name="tournament", action="run_tournament_cycle",
+                     depends_on=("review",), on_failure=FailurePolicy.ABORT,
+                     description="The only selection signal; a failure here "
+                                 "makes every later choice arbitrary."),
+            TaskSpec(name="evolution", action="run_evolution_cycle",
+                     depends_on=("tournament",), on_failure=FailurePolicy.DEGRADE),
+            TaskSpec(name="prereg_evolved", action="run_preregistration_cycle",
+                     depends_on=("evolution",), on_failure=FailurePolicy.DEGRADE),
+            TaskSpec(name="meta_review", action="run_meta_review_and_status",
+                     params={"iteration": iteration},
+                     depends_on=("tournament",), on_failure=FailurePolicy.DEGRADE),
+        ]
+
+    def _validation_pipeline(self) -> list[TaskSpec]:
+        """Phase 3: empirical validation and closed-loop revision."""
+        return [
+            TaskSpec(name="experiment", action="run_experiment_cycle",
+                     on_failure=FailurePolicy.DEGRADE,
+                     description="May legitimately fail (no sandbox, no data)."),
+            TaskSpec(name="replication", action="run_replication_cycle",
+                     depends_on=("experiment",), on_failure=FailurePolicy.DEGRADE),
+            TaskSpec(name="revision", action="run_revision_cycle",
+                     depends_on=("experiment",), on_failure=FailurePolicy.DEGRADE,
+                     description="Adjudicated refutations drive revision."),
+            TaskSpec(name="review_revised", action="run_review_cycle",
+                     depends_on=("revision",), on_failure=FailurePolicy.DEGRADE),
+            TaskSpec(name="prereg_revised", action="run_preregistration_cycle",
+                     depends_on=("revision",), on_failure=FailurePolicy.DEGRADE),
+        ]
+
+    def _output_pipeline(self) -> list[TaskSpec]:
+        """Phase 4: protocol and manuscript."""
+        return [
+            TaskSpec(name="protocol", action="run_protocol_cycle",
+                     on_failure=FailurePolicy.DEGRADE),
+            TaskSpec(name="writing", action="run_writing_cycle",
+                     on_failure=FailurePolicy.DEGRADE),
+            TaskSpec(name="summary", action="_print_final_summary",
+                     depends_on=("writing",), on_failure=FailurePolicy.IGNORE),
+        ]
+
+    async def run_full_cycle(self, num_iterations: int = 3, num_hypotheses: int = 5):
+        """Run the complete workflow as a sequence of validated task DAGs."""
         print("\n" + "=" * 70)
-        print("🤖 NewAI Scientist v3.0 WORKFLOW STARTED (Convergence & Closed-Loop)")
+        print("🤖 NewAI Scientist WORKFLOW STARTED (DAG orchestration)")
         print("=" * 70)
 
-        # Initialize convergence tracker
+        if self.budget is not None:
+            print(f"💰 Budget: {self.budget.summary()}")
+        print(f"🔒 Sandbox: {self.experiment_agent.isolation_status()['strength']}")
+
         tracker = ConvergenceTracker(max_iterations=num_iterations)
+        self.run_reports = []
 
-        # 1. INITIAL PHASES: Literature Search & Scoping
-        self.supervisor.queue_task("Orchestrator", "run_literature_search", {}, priority=1)
-        self.supervisor.queue_task("Orchestrator", "run_scoping_cycle", {}, priority=2)
-        self.supervisor.queue_task("Orchestrator", "run_hypothesis_generation_cycle", {"num_hypotheses": 5}, priority=3)
-        self.supervisor.queue_task("Orchestrator", "run_preregistration_cycle", {}, priority=4)
-        
-        print("\n🚀 Executing Initial Phases...")
-        await self.supervisor.execute_task_queue(max_iterations=10)
+        # --- Phase 1 -----------------------------------------------------
+        print("\n🚀 Phase 1 — Evidence base and hypothesis generation")
+        report = await self.supervisor.run_pipeline(
+            self._initial_pipeline(num_hypotheses), label="initial",
+        )
+        self.run_reports.append(report)
+        if report.aborted:
+            print("\n🛑 Aborting: the evidence base could not be established.")
+            print("   Continuing would produce hypotheses grounded in nothing.")
+            self._print_run_health()
+            return
 
-        # 2. EVOLUTION & REFLECTION ITERATIONS (Convergence-controlled)
+        # --- Phase 2 -----------------------------------------------------
         for iteration in range(1, num_iterations + 1):
-            print(f"\n🔄 Running Iteration {iteration}/{num_iterations}...")
-            base_prio = 10 + (iteration * 10)
-            
-            # Queue iteration tasks
-            self.supervisor.queue_task("Orchestrator", "run_review_cycle", {}, priority=base_prio + 1)
-            self.supervisor.queue_task("Orchestrator", "run_proximity_cycle", {}, priority=base_prio + 2)
-            self.supervisor.queue_task("Orchestrator", "run_tournament_cycle", {"num_matches": 4}, priority=base_prio + 3)
-            self.supervisor.queue_task("Orchestrator", "run_evolution_cycle", {}, priority=base_prio + 4)
-            self.supervisor.queue_task("Orchestrator", "run_preregistration_cycle", {}, priority=base_prio + 5)
-            self.supervisor.queue_task("Orchestrator", "run_meta_review_and_status", {"iteration": iteration}, priority=base_prio + 6)
-            
-            # Execute current iteration
-            await self.supervisor.execute_task_queue(max_iterations=20)
-
-            # Update convergence tracker
-            report = tracker.update(
-                self.context_memory.hypotheses,
-                self.context_memory.tournament_history,
-                iteration
+            print(f"\n🔄 Phase 2 — Iteration {iteration}/{num_iterations}")
+            report = await self.supervisor.run_pipeline(
+                self._iteration_pipeline(iteration), label=f"iteration-{iteration}",
             )
+            self.run_reports.append(report)
 
-            # Check for convergence
-            if tracker.should_stop(iteration):
-                print(f"\n✨ System has converged at iteration {iteration}. Reasons:")
-                for r in report.reasons:
-                    print(f"  • {r}")
+            if report.aborted:
+                print(f"\n🛑 Iteration {iteration} aborted — stopping the loop.")
                 break
 
-        # 3. EXPERIMENTAL VALIDATION & CLOSED-LOOP REVISION
-        print("\n🧪 Executing Empirical Validation & Closed-loop Revision...")
-        self.supervisor.queue_task("Orchestrator", "run_experiment_cycle", {}, priority=100)
-        self.supervisor.queue_task("Orchestrator", "run_replication_cycle", {}, priority=101)
-        self.supervisor.queue_task("Orchestrator", "run_revision_cycle", {}, priority=102)
-        
-        # After revision, run reviews and pre-register any new hypotheses
-        self.supervisor.queue_task("Orchestrator", "run_review_cycle", {}, priority=103)
-        self.supervisor.queue_task("Orchestrator", "run_preregistration_cycle", {}, priority=104)
-        
-        await self.supervisor.execute_task_queue(max_iterations=10)
+            convergence = tracker.update(
+                self.context_memory.hypotheses,
+                self.context_memory.tournament_history,
+                iteration,
+            )
+            if tracker.should_stop(iteration):
+                print(f"\n✨ Converged at iteration {iteration}:")
+                for reason in convergence.reasons:
+                    print(f"  • {reason}")
+                break
 
-        # 4. FINAL PROTOCOL & MANUSCRIPT WRITING
-        print("\n📝 Compiling final protocol design and scientific manuscript...")
-        final_prio = 1000
-        self.supervisor.queue_task("Orchestrator", "run_protocol_cycle", {}, priority=final_prio)
-        self.supervisor.queue_task("Orchestrator", "run_writing_cycle", {}, priority=final_prio + 1)
-        self.supervisor.queue_task("Orchestrator", "_print_final_summary", {}, priority=final_prio + 2)
+            if self.budget is not None and self.budget.exhausted:
+                print(f"\n💰 Budget exhausted after iteration {iteration}: "
+                      f"{self.budget.summary()}")
+                break
 
-        # Final execute
-        await self.supervisor.execute_task_queue(max_iterations=10)
+        # --- Phase 3 -----------------------------------------------------
+        print("\n🧪 Phase 3 — Empirical validation and closed-loop revision")
+        report = await self.supervisor.run_pipeline(
+            self._validation_pipeline(), label="validation",
+        )
+        self.run_reports.append(report)
+
+        # --- Phase 4 -----------------------------------------------------
+        print("\n📝 Phase 4 — Protocol and manuscript")
+        report = await self.supervisor.run_pipeline(
+            self._output_pipeline(), label="output",
+        )
+        self.run_reports.append(report)
+
+        self._print_run_health()
+
+    def _print_run_health(self) -> None:
+        """Report what actually completed. Printed at the end of every run.
+
+        The point is that a partially-failed run must be visibly partial.
+        Previously a run with a dead literature phase and a crashed tournament
+        produced the same triumphant summary as a clean one.
+        """
+        print("\n" + "=" * 70)
+        print("🩺 RUN HEALTH")
+        print("=" * 70)
+
+        clean = all(r.clean for r in getattr(self, "run_reports", []))
+        for report in getattr(self, "run_reports", []):
+            print(f"  {report.summary()}")
+
+        digest = self.supervisor.failure_digest()
+        if "No task failures" not in digest:
+            print(f"\n{digest}")
+
+        if self.budget is not None:
+            print(f"\n{self.budget.render()}")
+
+        if clean:
+            print("\n✅ All tasks completed. Results rest on a complete evidence base.")
+        else:
+            print(
+                "\n⚠ INCOMPLETE RUN — some tasks failed or were skipped. Any "
+                "manuscript or protocol produced above rests on a partial "
+                "evidence base and must state so."
+            )
 
     # ------------------------------------------------------------------
     # STATUS & EXPORT
@@ -701,15 +969,21 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
         print(f"  Evolution agent: {self.evolution_agent.evolved_hypotheses} evolutions")
         print(f"  Literature agent: {self.literature_agent.papers_retrieved} papers retrieved")
 
-        top_hyps = sorted(
-            self.context_memory.hypotheses.values(), key=lambda h: h.elo_rating, reverse=True,
-        )[:5]
+        top_hyps = self.top_hypotheses(5)
 
-        print("\n🏆 Top 5 Hypotheses (by Elo rating):")
+        print("\n🏆 Top 5 Hypotheses (conservative rating, μ − 2σ):")
         for i, hyp in enumerate(top_hyps, 1):
             print(f"\n{i}. {hyp.title}")
             print(f"   ID: {hyp.id}")
-            print(f"   Elo Rating: {hyp.elo_rating:.0f}")
+            print(
+                f"   Rating: μ={hyp.rating_mu:.0f} ± σ={hyp.rating_sigma:.0f} "
+                f"(conservative {hyp.rating_conservative:.0f}, "
+                f"{hyp.rating_matches} matches)"
+            )
+            if hyp.verdicts:
+                statuses = [v.get("status", "?") for v in hyp.verdicts]
+                print(f"   Adjudication: {', '.join(statuses)}")
+                print(f"   Empirical support: {hyp.empirical_support:+.2f}")
             print(f"   Novelty Level: {hyp.novelty_level}")
             print(f"   Status: {hyp.status.value}")
             print(f"   Reviews: {len(hyp.reviews)}")
@@ -729,6 +1003,15 @@ Supported databases: ['arxiv', 'pubmed', 'biorxiv', 'ieee_xplore', 'scopus']."""
                     "description": h.description,
                     "mechanism": h.mechanism,
                     "elo_rating": h.elo_rating,
+                    "rating_mu": h.rating_mu,
+                    "rating_sigma": h.rating_sigma,
+                    "rating_conservative": h.rating_conservative,
+                    "rating_matches": h.rating_matches,
+                    "empirical_support": h.empirical_support,
+                    "verdicts": h.verdicts,
+                    "experiment_runs": h.experiment_runs,
+                    "prediction_hash": h.prediction_hash,
+                    "registered_at": h.registered_at,
                     "novelty_level": h.novelty_level,
                     "status": h.status.value,
                     "testable_predictions": h.testable_predictions,
