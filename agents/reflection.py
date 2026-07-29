@@ -352,20 +352,45 @@ Evaluate this hypothesis on the following criteria and return a JSON object:
         return min(1.0, max(0.0, score))
 
     async def _assess_novelty(self, hypothesis: Hypothesis, goal: ResearchGoal) -> float:
-        score = 0.6
-        if "simulated" in hypothesis.generation_method:
-            score = 0.55
-        elif "llm" in hypothesis.generation_method:
-            score = 0.75
-        elif hypothesis.generation_method == "evolved":
-            score = 0.65
-        elif hypothesis.generation_method == "combined":
-            score = 0.70
-        elif hypothesis.generation_method == "inspired":
-            score = 0.60
-        if "similar to" in hypothesis.description.lower():
-            score -= 0.2
-        return min(1.0, max(0.0, score))
+        """Assess novelty against the literature, not against plumbing.
+
+        The previous implementation returned a value keyed on
+        ``generation_method``: 0.75 for "llm-generated", 0.55 for "simulated",
+        0.65 for "evolved". A hypothesis was judged 36% more novel for having
+        come from an LLM rather than the simulation stub. That artefact then
+        carried weight 0.25 in the Bradley-Terry prior and helped decide which
+        hypothesis got written up.
+
+        Novelty is not introspectable. It is a claim about what already exists
+        in the literature, so it is answered by searching — see
+        ``utils.novelty``, which runs a Semantic Scholar prior-art query and
+        returns the nearest papers so a human can check the verdict.
+
+        Returns 0.5 with ``novelty_level = "unknown"`` when no search could
+        run: explicit ignorance rather than a plausible-looking number.
+        """
+        if hypothesis.novelty_report:
+            return float(hypothesis.novelty_report.get("score", 0.5))
+
+        try:
+            from utils.novelty import apply_report, assess_novelty
+
+            report = await assess_novelty(
+                hypothesis,
+                rag_engine=getattr(self, "rag_engine", None),
+                graph_agent=getattr(self, "graph_agent", None),
+            )
+            apply_report(hypothesis, report)
+            if not report.searched:
+                logger.info(
+                    "Novelty for '%s' not assessed (%s) — recorded as unknown.",
+                    (hypothesis.title or "")[:40], report.error,
+                )
+            return report.score
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Novelty assessment unavailable: %s", exc)
+            hypothesis.novelty_level = "unknown"
+            return 0.5
 
     async def _assess_testability(self, hypothesis: Hypothesis, goal: ResearchGoal) -> float:
         score = 0.65
