@@ -1,29 +1,43 @@
 """
-agents/replication.py — ReplicationAgent for in-silico experiment replication.
+agents/replication.py — ReplicationAgent: multiverse (specification-curve) analysis.
 
-Responsible for:
-- Re-executing experiments with different random seeds
-- Computing reproducibility scores (inter-run variance)
-- Providing confidence intervals for experimental results
-- Flagging non-reproducible findings before they enter the ranking
+Replaces seed-variation "replication", which measured nothing useful:
 
-A hypothesis whose experiment is not reproducible should be penalised in
-the Elo tournament — this agent provides the signal for that.
+* On real, deterministic data a different ``np.random.seed`` produces
+  **identical** output. The system reported perfect reproducibility — true,
+  and entirely uninformative.
+* On synthetic data it measured the variance of the pseudo-random generator
+  the LLM had just written. "Robust" meant the model picked a small sigma.
+
+The question worth asking is not *does this rerun the same way?* but *does
+the conclusion survive the analytic choices the analyst could defensibly
+have made otherwise?* That is a specification curve: enumerate the forks
+(outlier policy, statistical test, transform, covariate adjustment), run all
+of them, report the distribution.
+
+The resulting fragility populates ``Hypothesis.multiverse_fragility``, which
+feeds the Bradley-Terry prior — so a finding surviving 4 of 96 defensible
+specifications is penalised in the ranking rather than written up as a result.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import statistics
-import subprocess
-import sys
-import tempfile
+import random
 from typing import Any
 
 from models.hypothesis import Hypothesis, ResearchGoal
+from utils.multiverse import (
+    DEFAULT_FORKS,
+    MultiverseReport,
+    SpecificationResult,
+    build_specification_code,
+    enumerate_specifications,
+    parse_specification_result,
+)
 from utils.safety import check_code_safety
+from utils.sandbox_runner import SandboxPolicy, run_sandboxed
 
 from .base import BaseAgent
 
@@ -31,218 +45,210 @@ logger = logging.getLogger(__name__)
 
 
 class ReplicationAgent(BaseAgent):
-    """Replicates experiments to assess reproducibility."""
+    """Assesses robustness by running the analysis across the fork space."""
 
     name = "Replication"
 
-    def __init__(self, use_local_llm: bool = True):
+    def __init__(
+        self,
+        use_local_llm: bool = True,
+        forks: dict[str, list[str]] | None = None,
+        max_specifications: int = 32,
+        max_parallel: int = 4,
+        policy: SandboxPolicy | None = None,
+    ):
         super().__init__(use_local_llm=use_local_llm)
         self.replications_run = 0
+        self.forks = forks or DEFAULT_FORKS
+        #: The full default space is 96 specifications; sampling keeps the
+        #: cost bounded while preserving the distributional picture.
+        self.max_specifications = max_specifications
+        self.max_parallel = max_parallel
+        self.policy = policy or SandboxPolicy.from_env()
+
+    # ------------------------------------------------------------------
 
     async def replicate_experiment(
         self,
         hypothesis: Hypothesis,
         goal: ResearchGoal,
-        n_replications: int = 3,
+        n_replications: int | None = None,
         timeout_per_run: int = 30,
     ) -> dict[str, Any]:
-        """Re-execute the experiment code with different random seeds.
+        """Run the multiverse analysis for one hypothesis.
 
-        Parameters
-        ----------
-        hypothesis
-            Must have ``experimental_results`` set from a prior ExperimentAgent run.
-        goal
-            The research goal (for context in result parsing).
-        n_replications
-            Number of times to re-run. Default 3.
-        timeout_per_run
-            Per-run timeout in seconds.
+        ``n_replications`` is accepted for backwards compatibility and, when
+        given, caps the number of specifications sampled.
 
-        Returns
-        -------
-        A dict with keys:
-        - ``reproducibility_score``: 0.0-1.0 (fraction of runs that converged)
-        - ``results``: list of per-run stdout strings
-        - ``consistency``: narrative summary of inter-run agreement
+        Returns a dict retaining the legacy keys (``reproducibility_score``,
+        ``results``, ``consistency``) plus the full ``multiverse`` report.
         """
-        if not hypothesis.experimental_results:
-            logger.info("No prior experiment results for '%s' — skipping replication.", hypothesis.title[:40])
-            return {
-                "reproducibility_score": 0.0,
-                "results": [],
-                "consistency": "No experiment to replicate.",
-            }
+        base_code = await self._get_experiment_code(hypothesis, goal)
+        if not base_code:
+            logger.info(
+                "No experiment code available for '%s' — skipping multiverse.",
+                (hypothesis.title or "")[:40],
+            )
+            return self._empty_result("no prior experiment code to vary")
 
-        # Extract the experiment code if we can regenerate it
-        code = await self._get_experiment_code(hypothesis, goal)
-        if not code:
-            return {
-                "reproducibility_score": 0.0,
-                "results": [],
-                "consistency": "Could not obtain experiment code for replication.",
-            }
+        is_clean, reason = check_code_safety(base_code)
+        if not is_clean:
+            return self._empty_result(f"code rejected by quality filter: {reason}")
 
-        # Safety check
-        is_safe, reason = check_code_safety(code)
-        if not is_safe:
-            return {
-                "reproducibility_score": 0.0,
-                "results": [],
-                "consistency": f"Replication blocked by safety filter: {reason}",
-            }
-
-        # Run n_replications with different seeds
-        results: list[str] = []
-        for i in range(n_replications):
-            seed = 42 + i * 1000
-            seeded_code = self._inject_seed(code, seed)
-            output = await self._run_isolated(seeded_code, timeout_per_run)
-            results.append(output)
-            self.replications_run += 1
-
-        # Compute reproducibility score
-        score, consistency = self._assess_reproducibility(results)
-        hypothesis.reproducibility_score = score
-        hypothesis.replication_results = [
-            {"seed": 42 + i * 1000, "output": r[:500]}
-            for i, r in enumerate(results)
-        ]
+        specs = enumerate_specifications(self.forks)
+        cap = min(self.max_specifications, n_replications or self.max_specifications)
+        if len(specs) > cap:
+            # Deterministic sample so a run is reproducible; the fork space is
+            # a grid, so a random subset preserves marginal coverage well.
+            specs = random.Random(0).sample(specs, cap)
 
         logger.info(
-            "Replication for '%s': score=%.2f (%d/%d converged).",
-            hypothesis.title[:40], score, int(score * n_replications), n_replications,
+            "Multiverse for '%s': %d specifications (of %d in the full grid).",
+            (hypothesis.title or "")[:40], len(specs),
+            len(enumerate_specifications(self.forks)),
         )
+
+        semaphore = asyncio.Semaphore(self.max_parallel)
+
+        async def _run(spec: dict[str, str]) -> SpecificationResult:
+            async with semaphore:
+                code = build_specification_code(base_code, spec)
+                result = await run_sandboxed(code, policy=self.policy)
+                if result.blocked:
+                    return SpecificationResult(spec=spec, error=f"blocked: {result.error[:80]}")
+                if result.timed_out:
+                    return SpecificationResult(spec=spec, error="timed out")
+                return parse_specification_result(result.stdout, spec)
+
+        outcomes = await asyncio.gather(*[_run(s) for s in specs], return_exceptions=True)
+
+        results: list[SpecificationResult] = []
+        for spec, outcome in zip(specs, outcomes, strict=True):
+            if isinstance(outcome, Exception):
+                results.append(SpecificationResult(spec=spec, error=str(outcome)[:120]))
+            else:
+                results.append(outcome)
+
+        report = MultiverseReport(results=results, direction=1)
+        self.replications_run += 1
+        return self._apply(hypothesis, report)
+
+    # ------------------------------------------------------------------
+
+    def _apply(self, hypothesis: Hypothesis, report: MultiverseReport) -> dict[str, Any]:
+        """Write the multiverse outcome onto the hypothesis and render it."""
+        hypothesis.multiverse_fragility = report.fragility
+        # Legacy field: reproducibility is now the support rate across forks,
+        # which is a meaningful quantity, unlike seed-to-seed variance.
+        hypothesis.reproducibility_score = report.support_rate
+        hypothesis.replication_results = report.to_dict()["specifications"]
+
+        if not report.robust and report.n_ran:
+            hypothesis.limitations.append(
+                f"Multiverse fragility {report.fragility:.2f}: the conclusion "
+                f"holds in only {report.n_supporting}/{report.n_ran} defensible "
+                "analytic specifications."
+            )
+
+        narrative = report.render()
+        logger.info(
+            "Multiverse for '%s': support %.0f%%, fragility %.2f, %d sign flips.",
+            (hypothesis.title or "")[:40], 100 * report.support_rate,
+            report.fragility, report.sign_flips,
+        )
+
         return {
-            "reproducibility_score": score,
-            "results": [r[:500] for r in results],
-            "consistency": consistency,
+            "reproducibility_score": report.support_rate,
+            "fragility": report.fragility,
+            "robust": report.robust,
+            "results": [
+                f"{r.spec}: effect={r.effect}, p={r.p_value}"
+                for r in report.results
+            ],
+            "consistency": narrative,
+            "multiverse": report.to_dict(),
         }
 
+    @staticmethod
+    def _empty_result(reason: str) -> dict[str, Any]:
+        return {
+            "reproducibility_score": 0.0,
+            "fragility": 0.0,
+            "robust": False,
+            "results": [],
+            "consistency": f"Multiverse analysis not performed: {reason}",
+            "multiverse": {},
+        }
+
+    # ------------------------------------------------------------------
+
     async def _get_experiment_code(
-        self, hypothesis: Hypothesis, goal: ResearchGoal
-    ) -> str | None:
-        """Regenerate experiment code via LLM (same prompt as ExperimentAgent)."""
+        self,
+        hypothesis: Hypothesis,
+        goal: ResearchGoal,
+    ) -> str:
+        """Recover the analysis code to vary across specifications.
+
+        Prefers code already generated by the ExperimentAgent; otherwise asks
+        the LLM for an analysis that calls the injected ``multiverse_analyse``
+        harness, so every fork is applied by the same audited code rather than
+        re-implemented per specification (which would confound analytic
+        choice with code variation).
+        """
+        for run in reversed(hypothesis.experiment_runs or []):
+            code = run.get("code")
+            if code:
+                return code
+
         if not self.llm_client:
-            return None
+            return ""
 
         from utils.llm import get_llm_completion
 
         prompt = f"""
-        Research Goal: {goal.title}
-        Hypothesis: {hypothesis.title}
-        Mechanism: {hypothesis.mechanism}
-        Predictions: {', '.join(hypothesis.testable_predictions)}
+Research goal: {goal.title}
+Hypothesis: {hypothesis.title}
+Mechanism: {hypothesis.mechanism}
 
-        Write a Python 3 script using standard libraries (numpy, scipy, pandas)
-        that performs a statistical analysis to test this hypothesis.
-        The script must:
-        - Accept a random seed via `import numpy as np; np.random.seed(SEED)`
-          where SEED is set at the top of the script.
-        - Generate synthetic data if no data.csv is available.
-        - Print a clear summary of results (p-values, effect sizes, conclusion).
+Write a Python 3 analysis script for a multiverse (specification-curve) study.
 
-        Output ONLY the python code inside a ```python block. No other text.
-        """
+A harness is ALREADY injected above your code. Do not redefine it. It provides:
 
+    multiverse_analyse(group_a, group_b)
+
+which applies the current specification (outlier policy, transform,
+statistical test, covariate adjustment) and prints the result line itself.
+
+Your script must:
+1. Load `data.csv` if present, otherwise construct the two comparison groups
+   from documented priors.
+2. Build two 1-D numeric arrays: `group_a` (treated) and `group_b` (control).
+3. Call `multiverse_analyse(group_a, group_b)` exactly once, as the last
+   statement.
+
+Do NOT set a random seed, do NOT choose a statistical test yourself, and do
+NOT filter outliers — those are exactly the choices the harness varies.
+
+Output ONLY the Python code in a ```python block.
+"""
         try:
             response = await get_llm_completion(
                 self.llm_client,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
                 json_mode=False,
+                agent_role="code",
             )
-            content = response.choices[0].message.content.strip()
+            content = response.choices[0].message.content
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Multiverse code generation failed: %s", exc)
+            return ""
 
-            if "```python" in content:
-                return content.split("```python")[1].split("```")[0].strip()
-            elif "```" in content:
-                return content.split("```")[1].split("```")[0].strip()
-            return content
-        except Exception as e:
-            logger.warning("Failed to regenerate experiment code: %s", e)
-            return None
-
-    @staticmethod
-    def _inject_seed(code: str, seed: int) -> str:
-        """Inject a random seed at the top of the experiment code."""
-        seed_block = (
-            f"# --- Replication seed injection ---\n"
-            f"import numpy as np\n"
-            f"np.random.seed({seed})\n"
-            f"import random\n"
-            f"random.seed({seed})\n"
-            f"# --- End seed injection ---\n\n"
-        )
-        return seed_block + code
-
-    @staticmethod
-    async def _run_isolated(code: str, timeout: int) -> str:
-        """Execute code in an isolated subprocess."""
-        env = os.environ.copy()
-        for key in ("OPENAI_API_KEY", "NCBI_API_KEY", "ANTHROPIC_API_KEY"):
-            env.pop(key, None)
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            script_path = os.path.join(temp_dir, "replicate.py")
-            with open(script_path, "w", encoding="utf-8") as f:
-                f.write(code)
-
-            try:
-                result = await asyncio.to_thread(
-                    subprocess.run,
-                    [sys.executable, "-S", script_path],
-                    cwd=temp_dir,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                    env=env,
-                )
-                output = result.stdout
-                if result.stderr:
-                    output += f"\n[STDERR]: {result.stderr}"
-                return output or "Script ran but produced no output."
-            except subprocess.TimeoutExpired:
-                return "[TIMEOUT] Script timed out."
-            except Exception as e:
-                return f"[ERROR] {e}"
-
-    @staticmethod
-    def _assess_reproducibility(results: list[str]) -> tuple[float, str]:
-        """Assess how consistent the results are across replications.
-
-        Heuristic: a run "converges" if it produces non-error output
-        that contains at least one p-value or statistical keyword.
-        Consistency is the fraction of converged runs.
-        """
-        if not results:
-            return 0.0, "No results to assess."
-
-        convergence_keywords = {"p-value", "p_value", "p =", "p=", "significant",
-                                "effect size", "correlation", "coefficient",
-                                "t-statistic", "chi-square", "f-statistic",
-                                "supports", "rejects", "conclusion"}
-
-        converged = 0
-        for r in results:
-            lower = r.lower()
-            if "[ERROR]" in r or "[TIMEOUT]" in r:
-                continue
-            if any(kw in lower for kw in convergence_keywords):
-                converged += 1
-
-        score = converged / len(results) if results else 0.0
-
-        if score >= 0.9:
-            consistency = "High reproducibility: all runs converged with statistical output."
-        elif score >= 0.6:
-            consistency = "Moderate reproducibility: most runs converged but some variability detected."
-        elif score > 0:
-            consistency = "Low reproducibility: significant inter-run variation or failures."
-        else:
-            consistency = "Not reproducible: no runs produced valid statistical output."
-
-        return score, consistency
+        if "```python" in content:
+            return content.split("```python")[1].split("```")[0].strip()
+        if "```" in content:
+            return content.split("```")[1].split("```")[0].strip()
+        return content.strip()
 
 
 __all__ = ["ReplicationAgent"]
