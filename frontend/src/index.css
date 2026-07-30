@@ -1,73 +1,204 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* ═══════════════════════════════════════════════════════════════
+   NewAIScientist — design tokens
 
-:root {
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+   Direction: bench and instrument readout.
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #0f172a;
+   The engine can say no, say I don't know, and say this was never
+   tested. The interface has to make that legible, so the
+   organising principle is: uncertainty is the primary visual,
+   never a footnote. No score appears without its spread.
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+   Two modes, one identity. Light is the bench: cool grey-green
+   laminate, graph-paper rule, reviewer's pen. Dark is the same lab
+   at night — the panel is lit, the bench is not. Deliberately a
+   warm olive-black rather than the blue-slate every dashboard
+   defaults to, so both modes read as one product.
+
+   Tokens are SEMANTIC, not literal. --oxide always means refuted,
+   --verdigris always means corroborated, --amber always means
+   untested. Only luminance shifts between modes, so a new
+   component writes var(--oxide) without knowing which theme it is
+   rendering in. Never hard-code a hex outside this block.
+   ═══════════════════════════════════════════════════════════════ */
+
+@theme {
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Surfaces and rules resolve per theme via the blocks below. */
+  --color-ground: var(--ground);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+
+  --color-oxide: var(--oxide);
+  --color-oxide-soft: var(--oxide-soft);
+  --color-oxide-on: var(--oxide-on);
+  --color-verdigris: var(--verdigris);
+  --color-verdigris-soft: var(--verdigris-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
 }
 
-body {
-  margin: 0;
-  display: flex;
-  min-width: 320px;
-  min-height: 100vh;
-  font-family: 'Inter', sans-serif;
-  background: radial-gradient(circle at top right, #1e293b, #0f172a);
-  color: #f8fafc;
+:root,
+[data-theme='light'] {
+  --ground: #e9ebe4;
+  --raised: #f4f5f0;
+  --sunken: #dfe2d9;
+  --rule: #c6cbbe;
+  --rule-strong: #a8af9d;
+  --grid: #c6cbbe;
+
+  --ink: #171a16;
+  --ink-2: #4c5349;
+  --ink-3: #767d71;
+
+  --oxide: #a63a1e;
+  --oxide-soft: #f0ddd6;
+  --oxide-on: #ffffff;
+
+  --verdigris: #226359;
+  --verdigris-soft: #d7e4e0;
+
+  --amber: #8a6612;
+  --amber-soft: #efe7d2;
+
+  --violet: #4a3d74;
+  --violet-soft: #e2deec;
+
+  --shadow-entry: 0 1px 0 rgb(23 26 22 / 0.05), 0 1px 3px rgb(23 26 22 / 0.06);
+  color-scheme: light;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Outfit', sans-serif;
+[data-theme='dark'] {
+  --ground: #15170f;
+  --raised: #1d2018;
+  --sunken: #101208;
+  --rule: #33382c;
+  --rule-strong: #4a5140;
+  --grid: #232820;
+
+  --ink: #e8eae0;
+  --ink-2: #b0b6a8;
+  --ink-3: #7d8577;
+
+  --oxide: #e4714d;
+  --oxide-soft: #3a2119;
+  --oxide-on: #1a0e0a;
+
+  --verdigris: #55b7a3;
+  --verdigris-soft: #132a26;
+
+  --amber: #d4a63c;
+  --amber-soft: #2c2413;
+
+  --violet: #a99bd4;
+  --violet-soft: #221e30;
+
+  --shadow-entry: 0 1px 0 rgb(0 0 0 / 0.3), 0 2px 8px rgb(0 0 0 / 0.35);
+  color-scheme: dark;
 }
 
-.glass-card {
-  background: rgba(30, 41, 59, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  border-radius: 1rem;
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--ground);
+    /* Graph-paper rule: the work surface. Quiet in light, quieter in dark. */
+    background-image:
+      linear-gradient(var(--grid) 0.5px, transparent 0.5px),
+      linear-gradient(90deg, var(--grid) 0.5px, transparent 0.5px);
+    background-size: 28px 28px;
+    background-position: -0.5px -0.5px;
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 180ms, color 180ms;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-variation-settings: 'SOFT' 20, 'WONK' 1, 'opsz' 40;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--violet);
+    outline-offset: 2px;
+  }
 }
 
-.sidebar-item-active {
-  background: linear-gradient(90deg, rgba(14, 165, 233, 0.2) 0%, rgba(14, 165, 233, 0) 100%);
-  border-left: 4px solid #0ea5e9;
+@layer components {
+  /* Every measured value is tabular monospace. A column of
+     measurements has to align — that is not a style preference. */
+  .num {
+    font-family: var(--font-mono);
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /* Engraved instrument-panel lettering. */
+  .panel-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .entry {
+    background-color: var(--raised);
+    border: 1px solid var(--rule-strong);
+    box-shadow: var(--shadow-entry);
+    transition: background-color 180ms, border-color 180ms;
+  }
 }
 
-.animate-gradient {
-  background: linear-gradient(-45deg, #0ea5e9, #6366f1, #d946ef, #0ea5e9);
-  background-size: 400% 400%;
-  animation: gradient 15s ease infinite;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
-@keyframes gradient {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
+/* ═══════════════════════════════════════════════════════════════
+   MIGRATION SHIM — remove once every page uses the tokens.
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+   Dashboard, Scoping, Literature, Protocol, Analysis and Writing
+   still carry `glass-card` and hard-coded `slate-*` utilities from
+   the previous dark-only design. Rather than leave them visually
+   broken against the new ground, `glass-card` is remapped onto the
+   entry surface so those pages stay usable during the migration.
+
+   The `slate-*` utilities still resolve (they are Tailwind
+   defaults) but they are hard-coded greys: they will not follow
+   the theme and will look wrong in light mode. Migrating a page
+   means replacing them with var(--ink) / var(--ink-2) / var(--ink-3)
+   and deleting its shim dependency.
+   ═══════════════════════════════════════════════════════════════ */
+@layer components {
+  .glass-card {
+    background-color: var(--raised);
+    border: 1px solid var(--rule-strong);
+    box-shadow: var(--shadow-entry);
+    border-radius: 0;
+  }
 }

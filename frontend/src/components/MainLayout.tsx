@@ -1,28 +1,22 @@
-import React, { useState } from 'react';
-import { Outlet, useLocation, Link } from 'react-router-dom';
-import Sidebar from './Sidebar';
-import Topbar from './Topbar';
+import { Outlet } from 'react-router-dom';
+import { useState } from 'react';
+import RunRail from './RunRail';
+import type { PipelineReport, SessionMeters } from '../types/domain';
 
-const MainLayout = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+export default function MainLayout() {
+  // Replace with a session poll against /session/state once the backend
+  // exposes the pipeline report and budget meters.
+  const [report] = useState<PipelineReport | null>(null);
+  const [meters] = useState<SessionMeters | null>(null);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden text-slate-200">
-      {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
-
-      {/* Main Content */}
-      <div className="flex flex-col flex-1 overflow-hidden">
-        {/* Topbar */}
-        <Topbar />
-
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-900/50">
+    <div className="flex min-h-screen w-full">
+      <RunRail report={report} meters={meters} />
+      <main className="min-w-0 flex-1 px-5 pb-24 pt-7 md:px-10">
+        <div className="mx-auto max-w-[1180px]">
           <Outlet />
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   );
-};
-
-export default MainLayout;
+}
