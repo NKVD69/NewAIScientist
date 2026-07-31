@@ -39,13 +39,16 @@ function Meter({ label, value, tone }: { label: string; value: string; tone?: st
 export default function RunRail({
   report,
   meters,
-  runId,
-  startedAt,
+  reachable,
+  phase,
+  iteration,
 }: {
   report: PipelineReport | null;
   meters: SessionMeters | null;
-  runId?: string;
-  startedAt?: string;
+  /** null while the first poll is in flight. */
+  reachable?: boolean | null;
+  phase?: string;
+  iteration?: number;
 }) {
   return (
     <aside
@@ -57,17 +60,27 @@ export default function RunRail({
         <div>
           <h1 className="text-[17px] leading-tight">NewAIScientist</h1>
           <div className="mt-[3px] font-mono text-[11px] tracking-wide text-[var(--ink-3)]">
-            {runId ? `run ${runId}` : 'no active run'}
-            {startedAt ? ` · ${startedAt}` : ''}
+            {reachable === false
+              ? 'backend unreachable'
+              : phase
+                ? `${phase}${iteration ? ` · iteration ${iteration}` : ''}`
+                : 'idle'}
           </div>
         </div>
         <ThemeToggle />
       </div>
 
-      {!report && (
+      {reachable === false && (
+        <p className="mx-[22px] mt-5 border-l-[3px] border-[var(--oxide)] bg-[var(--oxide-soft)] px-3 py-2.5 text-[12px] leading-relaxed text-[var(--ink-2)]">
+          Cannot reach the API on {import.meta.env.VITE_API_URL ?? 'localhost:8000'}. The panel
+          below shows the last state received, which may be stale.
+        </p>
+      )}
+
+      {!report && reachable !== false && (
         <p className="px-[22px] py-6 text-[12.5px] leading-relaxed text-[var(--ink-3)]">
-          No run yet. Start one from the dashboard and the pipeline will appear here, wave by
-          wave.
+          No run yet. Start one from the dashboard and the pipeline appears here, wave by wave,
+          with the reason for anything that fails or gets skipped.
         </p>
       )}
 
@@ -117,6 +130,26 @@ export default function RunRail({
           })}
         </div>
       ))}
+
+      {report && (
+        <div
+          className={cn(
+            'mx-[22px] mt-4 border-l-[3px] px-3 py-2 text-[11.5px] leading-snug',
+            report.clean
+              ? 'border-[var(--verdigris)] bg-[var(--verdigris-soft)] text-[var(--ink-2)]'
+              : 'border-[var(--oxide)] bg-[var(--oxide-soft)] text-[var(--ink-2)]',
+          )}
+        >
+          {report.clean ? (
+            <>Every task completed in <span className="num">{report.duration_s}s</span>.</>
+          ) : (
+            <>
+              <strong className="font-semibold text-[var(--ink)]">Incomplete run.</strong>{' '}
+              Anything produced rests on a partial evidence base.
+            </>
+          )}
+        </div>
+      )}
 
       {meters && (
         <div className="mt-3.5 border-t border-[var(--rule)] px-[22px] pt-[18px]">

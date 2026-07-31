@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Plus } from 'lucide-react';
 import { workflowApi } from '../services/api';
-import type { Hypothesis, PipelineReport } from '../types/domain';
+import type { Hypothesis } from '../types/domain';
+import { useSession } from '../session/useSession';
 import HypothesisEntry from '../components/HypothesisEntry';
 import RunHealth from '../components/primitives/RunHealth';
 
@@ -9,15 +10,30 @@ export default function Hypotheses() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hypotheses, setHypotheses] = useState<Hypothesis[]>([]);
-  const [report, setReport] = useState<PipelineReport | null>(null);
+  const { state, refresh } = useSession();
+
+  // The list is server state, not a mutation response: verdicts, ratings
+  // and novelty reports keep changing after generation returns, as the
+  // tournament and experiment phases run.
+  const load = useCallback(async () => {
+    try {
+      const res = await workflowApi.getHypotheses();
+      setHypotheses(res.data ?? []);
+    } catch {
+      /* the rail already reports an unreachable backend */
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load, state?.num_hypotheses, state?.iteration]);
 
   async function generate() {
     setLoading(true);
     setError(null);
     try {
-      const response = await workflowApi.runHypotheses(5);
-      setHypotheses(response.data.hypotheses ?? response.data ?? []);
-      setReport(response.data.report ?? null);
+      await workflowApi.runHypotheses(5);
+      await Promise.all([load(), refresh()]);
     } catch (e: any) {
       // Errors don't apologise and are never vague about what happened.
       setError(
@@ -67,7 +83,7 @@ export default function Hypotheses() {
         </div>
       )}
 
-      <RunHealth report={report} />
+      <RunHealth report={state?.report ?? null} />
 
       {ranked.length === 0 && !loading && !error && (
         <div className="border border-dashed border-[var(--rule-strong)] bg-[var(--raised)] px-8 py-14 text-center">

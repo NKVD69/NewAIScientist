@@ -101,10 +101,70 @@ def read_root():
     return {"status": "online", "version": "3.0.0", "timestamp": datetime.now().isoformat()}
 
 
+def _serialise_report(report) -> dict | None:
+    """Render a PipelineReport for the run rail.
+
+    The rail's whole purpose is to show what actually happened, including
+    which tasks were skipped and why. Without this the UI cannot
+    distinguish a clean run from one whose literature phase died and
+    whose manuscript therefore rests on nothing.
+    """
+    if report is None:
+        return None
+    return {
+        "waves": report.waves,
+        "aborted": report.aborted,
+        "abort_reason": report.abort_reason,
+        "clean": report.clean,
+        "duration_s": round(report.duration_s, 2),
+        "results": {
+            name: {
+                "name": result.name,
+                "state": result.state.value,
+                "error": result.error,
+                "skipped_because": result.skipped_because,
+                "duration_s": round(result.duration_s, 2),
+            }
+            for name, result in report.results.items()
+        },
+    }
+
+
+def _serialise_meters() -> dict:
+    """Budget, judge reliability and sandbox status."""
+    budget = getattr(scientist, "budget", None)
+    limits = getattr(budget, "limits", None)
+
+    reliability = {}
+    try:
+        reliability = scientist.ranking_agent.judge_reliability()
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        from utils.sandbox_runner import isolation_report
+        isolation = isolation_report()
+    except Exception:  # noqa: BLE001
+        isolation = {"backend": "unknown", "will_execute": False}
+
+    return {
+        "llm_calls": getattr(budget, "total_calls", 0),
+        "max_llm_calls": getattr(limits, "max_calls", None),
+        "cost_usd": round(getattr(budget, "total_cost_usd", 0.0), 4),
+        "max_cost_usd": getattr(limits, "max_cost_usd", None),
+        "tokens": getattr(budget, "total_tokens", 0),
+        "max_tokens": getattr(limits, "max_tokens", None),
+        "judge_order_invariance": reliability.get("order_invariance_rate"),
+        "sandbox_backend": isolation.get("backend", "unknown"),
+        "sandbox_will_execute": bool(isolation.get("will_execute", False)),
+    }
+
+
 @app.get("/session/state", dependencies=[Depends(require_api_key)])
 async def get_state():
     """Returns the full current context memory state."""
     ctx = scientist.context_memory
+    reports = getattr(scientist, "run_reports", []) or []
     return {
         "phase": ctx.current_phase,
         "goal": asdict(ctx.research_goal) if ctx.research_goal.title else None,
@@ -115,15 +175,24 @@ async def get_state():
         "num_datasets": len(ctx.datasets),
         "iteration": ctx.iteration_count,
         "has_manuscript": ctx.manuscript is not None,
+        # Latest pipeline execution, for the run rail.
+        "report": _serialise_report(reports[-1] if reports else None),
+        # Every report this session, so the rail can show a full run.
+        "reports": [_serialise_report(r) for r in reports],
+        "run_is_clean": all(r.clean for r in reports) if reports else None,
+        "meters": _serialise_meters(),
     }
 
 
 @app.get("/session/hypotheses", dependencies=[Depends(require_api_key)])
 async def get_hypotheses():
     """Returns all hypotheses sorted by Elo."""
+    # Conservative ranking (mu - 2 sigma): a hypothesis that won one lucky
+    # match must not outrank one that survived thirty. Sorting on raw mu
+    # here would contradict what the interface renders.
     hyps = sorted(
         scientist.context_memory.hypotheses.values(),
-        key=lambda h: h.elo_rating,
+        key=lambda h: h.rating_conservative,
         reverse=True,
     )
     return [
@@ -132,13 +201,30 @@ async def get_hypotheses():
             "title": h.title,
             "description": h.description,
             "mechanism": h.mechanism,
-            "elo_rating": h.elo_rating,
-            "novelty_level": h.novelty_level,
             "status": h.status.value,
             "testable_predictions": h.testable_predictions,
             "num_reviews": len(h.reviews),
             "generation_method": h.generation_method,
+            "parent_ids": h.parent_ids,
+            "limitations": h.limitations,
             "cited_papers": h.cited_papers,
+            # Bayesian belief. Never send mu without sigma: the interface
+            # renders the spread, and a bare point estimate would be a lie.
+            "elo_rating": h.elo_rating,       # legacy mirror of rating_mu
+            "rating_mu": h.rating_mu,
+            "rating_sigma": h.rating_sigma,
+            "rating_conservative": h.rating_conservative,
+            "rating_matches": h.rating_matches,
+            # Adjudicated verdicts, per pre-registered prediction.
+            "verdicts": h.verdicts,
+            "empirical_support": h.empirical_support,
+            "multiverse_fragility": h.multiverse_fragility,
+            # Grounded novelty, with the prior art that justifies it.
+            "novelty_level": h.novelty_level,
+            "novelty_report": h.novelty_report or None,
+            # Pre-registration receipt.
+            "prediction_hash": h.prediction_hash,
+            "registered_at": h.registered_at,
         }
         for h in hyps
     ]
