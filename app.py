@@ -219,25 +219,38 @@ with st.sidebar:
 
         # BOUTON DE TEST DE CONNEXION
         if st.button("📡 Tester la connexion"):
+            # The old version imported httpx here and passed a bare
+            # httpx.Client() to the SDK -- which is what the SDK builds
+            # anyway. A missing httpx therefore surfaced as
+            # "Échec de connexion : No module named 'httpx'", blaming the
+            # network for what was an install problem.
             try:
-                import httpx
                 import openai
-
+            except ImportError:
+                st.error(
+                    "Le paquet `openai` n'est pas installé dans cet interpréteur. "
+                    "Lancez : pip install -r requirements.txt"
+                )
+            else:
                 try:
-                    http_client = httpx.Client()
-                except Exception:
-                    http_client = None
-
-                kwargs = {"base_url": llm_base_url, "api_key": llm_api_key if llm_api_key else "lm-studio"}
-                if http_client is not None:
-                    kwargs["http_client"] = http_client
-
-                client = openai.OpenAI(**kwargs)
-                with st.spinner("Ping du serveur..."):
-                    models = client.models.list()
-                    st.success("Connexion réussie ! Serveur actif.")
-            except Exception as e:
-                st.error(f"Échec de connexion : {e}")
+                    client = openai.OpenAI(
+                        base_url=llm_base_url,
+                        api_key=llm_api_key or "lm-studio",
+                    )
+                    with st.spinner("Ping du serveur..."):
+                        models = client.models.list()
+                    names = [m.id for m in getattr(models, "data", [])][:5]
+                    st.success(
+                        "Connexion réussie."
+                        + (f" Modèles disponibles : {', '.join(names)}" if names else "")
+                    )
+                except Exception as exc:
+                    # Name the likely cause instead of echoing a raw traceback.
+                    st.error(f"Échec de connexion : {exc}")
+                    st.caption(
+                        f"Vérifiez que le serveur écoute bien sur `{llm_base_url}` "
+                        "(LM Studio : onglet Server ; Ollama : `ollama serve`)."
+                    )
 
 
     else:

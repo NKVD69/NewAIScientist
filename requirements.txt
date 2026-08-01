@@ -1,5 +1,9 @@
 # Core LLM + data
 openai==1.51.0
+# Transitive via openai, pinned explicitly because the FastAPI TestClient and
+# any custom transport also need it. Declaring it avoids a partial install
+# surfacing as a confusing "No module named 'httpx'" at connection time.
+httpx>=0.27,<1
 pandas==2.2.3
 plotly==5.24.1
 arxiv==2.1.3

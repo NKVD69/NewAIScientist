@@ -66,27 +66,30 @@ def get_ncbi_api_key() -> str:
 
 
 def get_openai_client():
-    """Return a pre-configured OpenAI client."""
+    """Return a pre-configured OpenAI client.
+
+    Note on httpx: a previous version imported httpx here and passed a bare
+    ``httpx.Client()`` as ``http_client``. That is exactly what the openai
+    SDK constructs internally when none is supplied, so the detour bought
+    nothing — while turning a transitive dependency into a hard one. A
+    missing httpx then failed the whole call with "No module named 'httpx'",
+    which reads like a network problem and is not one.
+
+    The SDK now builds its own transport. Pass ``http_client`` explicitly
+    only when you actually need custom behaviour (proxy, timeouts, mTLS).
+    """
     try:
-        import httpx
         import openai
-
-        try:
-            http_client = httpx.Client()
-        except Exception:
-            http_client = None
-
-        kwargs = {
-            "base_url": get_llm_base_url(),
-            "api_key": get_llm_api_key(),
-        }
-        if http_client is not None:
-            kwargs["http_client"] = http_client
-
-        return openai.OpenAI(**kwargs)
     except ImportError:
-        logger.error("openai package not installed")
+        logger.error(
+            "openai package not installed. Run: pip install -r requirements.txt"
+        )
         return None
+
+    return openai.OpenAI(
+        base_url=get_llm_base_url(),
+        api_key=get_llm_api_key(),
+    )
 
 
 
