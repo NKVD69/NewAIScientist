@@ -1,86 +1,42 @@
-# ---------------------------------------------------------------------------
-# Python bytecode & build artefacts
-# ---------------------------------------------------------------------------
+```python
+# Compiled and build artifacts
+*.pyc
 __pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.egg-info/
-*.egg
-build/
-dist/
-.eggs/
-pip-wheel-metadata/
+*.o
+*.obj
 
-# ---------------------------------------------------------------------------
-# Test / coverage / lint caches
-# ---------------------------------------------------------------------------
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.tox/
-.nox/
-htmlcov/
-.coverage
-.coverage.*
-coverage.xml
-*.cover
-nosetests.xml
-
-# ---------------------------------------------------------------------------
-# Runtime data produced by the AI Co-Scientist itself
-# ---------------------------------------------------------------------------
-# Vector store persisted by ChromaDB
-chroma_db/
-# Downloaded PDFs & PMC text fetched by the literature pipeline
-papers/
-# User-uploaded datasets for the analysis phase
-uploads/
-# Saved session JSON files (api/server.py /session/save endpoint)
-sessions/*.json
-# Hypotheses export produced by /session/export
-export.json
-
-# ---------------------------------------------------------------------------
-# Environment / secrets
-# ---------------------------------------------------------------------------
-.env
-.env.*
-!.env.example
-
-# ---------------------------------------------------------------------------
-# IDE / editor
-# ---------------------------------------------------------------------------
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-.project
-.pydevproject
-
-# ---------------------------------------------------------------------------
-# Claude Code worktrees & local settings
-# ---------------------------------------------------------------------------
-.claude/
-
-# ---------------------------------------------------------------------------
-# OS noise
-# ---------------------------------------------------------------------------
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# ---------------------------------------------------------------------------
-# Logs
-# ---------------------------------------------------------------------------
-*.log
-logs/
-
-# ---------------------------------------------------------------------------
-# Virtual environments (any common name)
-# ---------------------------------------------------------------------------
+# Dependencies
 .venv/
 venv/
-env/
-ENV/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Coverage reports
+.coverage
+coverage/
+htmlcov/
+
+# Python specific
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+
+# Cache directories
+.mypy_cache/
+.pytest_cache/
+```
