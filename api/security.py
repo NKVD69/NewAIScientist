@@ -143,7 +143,15 @@ def sanitise_filename(name: str, allowed_extensions: Iterable[str]) -> str:
     if not name:
         raise ValueError("empty filename")
 
-    base = Path(name).name  # strips any directory traversal
+    # Handle Windows-style paths on Unix by also stripping backslash segments
+    # PureWindowsPath correctly parses 'C:\\foo.csv' → 'foo.csv' even on Linux
+    from pathlib import PureWindowsPath
+    base = PureWindowsPath(name).name
+    
+    # Fallback to POSIX Path if PureWindowsPath didn't extract anything useful
+    if not base or base in (".", ".."):
+        base = Path(name).name
+    
     if not base or base in (".", ".."):
         raise ValueError("invalid filename")
 
